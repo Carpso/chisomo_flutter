@@ -4,6 +4,7 @@ Neutral fundraising platform app (donate + host campaigns). Backend: https://git
 
 - **Deployed API**: https://kingdom-sponsor-api.godfreymoseskalambo.workers.dev
 - **USSD service**: `*384*3448#` (Africa's Talking sandbox)
+- **Privacy Policy**: https://github.com/Carpso/chisomo/blob/master/PRIVACY_POLICY.md
 
 ## Run
 ```powershell
