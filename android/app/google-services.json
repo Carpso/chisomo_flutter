@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "252401896317",
+    "project_id": "kingdom-sponsor",
+    "storage_bucket": "kingdom-sponsor.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:252401896317:android:c84a47e69993f12896da14",
+        "android_client_info": {
+          "package_name": "com.kingdomsponsor.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1o9SgvAnAKWYESdg2FcSiQsu4a2QJMNY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
