@@ -5,7 +5,7 @@ All notable changes to the Kingdom Sponsor app and API are documented here.
 ## [0.3.0] - 2026-08-04
 
 ### Added
-- PDF donation receipts: rebranded with the Kingdom Sponsor blue header, richer details (donor, campaign, reference, date, status), full fee breakdown, "Campaign receives" net amount, and branded footer.
+- PDF donation receipts: rebranded with the Kingdom Sponsor blue header, richer details (donor, campaign, reference, date, status), full fee breakdown, "Campaign receives" full gift amount (fees paid on top by donor), and branded footer.
 - Receipt download button on the donation success screen.
 - API status endpoint now returns the contribution `id`, so the app can build the receipt URL.
 - Auto-disbursement: a daily sweep now pays out eligible balances for every active campaign, honouring each campaign's payout minimum.

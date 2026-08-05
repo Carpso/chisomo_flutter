@@ -16,7 +16,7 @@ class _BottomNavShellState extends State<BottomNavShell> {
 
   static const _tabs = [
     _NavTab('/', LucideIcons.home, 'Campaigns'),
-    _NavTab('/pledges', LucideIcons.repeat, 'Pledges'),
+    _NavTab('/pledges', LucideIcons.calendarClock, 'Pledges'),
     _NavTab('/host', LucideIcons.user, 'Host'),
     _NavTab('/settings', LucideIcons.settings, 'Settings'),
   ];

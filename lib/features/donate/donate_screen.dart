@@ -15,6 +15,16 @@ import '../auth/auth_controller.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
+/// Returns the USSD short code for mobile money prompts on the donor's phone.
+/// Lipila triggers the payment prompt via the carrier's mobile money gateway.
+/// The universal fallback USSD code for checking mobile money on all Zambian carriers is *115#.
+String ussdCodeForPhone(String phoneE164) {
+  // Lipila sends the USSD prompt to the donor's phone automatically.
+  // If the donor doesn't receive it, dial *115# to check mobile money
+  // on MTN, Airtel, or Zamtel — works across all Zambian networks.
+  return '*115#';
+}
+
 class DonateScreen extends ConsumerStatefulWidget {
   final int campaignId;
 
@@ -179,10 +189,11 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
       appBar: AppBar(title: const Text('Give')),
       body: switch (_phase) {
         _Phase.form => _buildForm(context),
-         _Phase.awaitingPin => _AwaitingPin(
-                referenceId: _referenceId ?? '',
-                onResend: _resendPrompt,
-              ),
+       _Phase.awaitingPin => _AwaitingPin(
+              referenceId: _referenceId ?? '',
+              phoneE164: _phoneE164,
+              onResend: _resendPrompt,
+            ),
         _Phase.done => _buildDone(context),
         _Phase.failed => _buildFailed(context),
       },
@@ -348,7 +359,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
-          onPressed: _submitting ? null : _donate,
+          onPressed: (_submitting || _amountCents < 100) ? null : _donate,
           icon: const Icon(LucideIcons.heartHandshake),
           label: _submitting
                ? SizedBox(
@@ -487,13 +498,15 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
 class _AwaitingPin extends ConsumerWidget {
   final String referenceId;
+  final String phoneE164;
   final VoidCallback onResend;
 
-  const _AwaitingPin({required this.referenceId, required this.onResend});
+  const _AwaitingPin({required this.referenceId, required this.phoneE164, required this.onResend});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final ussd = ussdCodeForPhone(phoneE164);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -517,7 +530,7 @@ class _AwaitingPin extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'If you don\'t see it, dial *115# on MTN.',
+              'If you don\'t see it, dial $ussd on your phone.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 16),

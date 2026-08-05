@@ -102,7 +102,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .read(authControllerProvider.notifier)
           .verifyOtp(_phoneE164, _otpController.text.trim(), referralCode: referral);
       ref.read(referralCodeProvider.notifier).set(null);
-      if (mounted) context.go('/');
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Welcome to Kingdom Sponsor'),
+            content: const Text(
+              'Your mobile number will be used for mobile money disbursement '
+              'of funds raised through your campaigns. Make sure it is the number '
+              'linked to your mobile money account.',
+              style: TextStyle(height: 1.5),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.go('/');
+                },
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
+        );
+      }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
@@ -126,29 +149,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               child: Card(
-                elevation: 12,
+                elevation: 6,
                 shadowColor: Colors.black12,
                 color: AppColors.surface,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Container(
-                        width: 140,
-                        height: 140,
+                        width: 88,
+                        height: 88,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.35),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
@@ -157,11 +180,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             'assets/kingdom_sponsor_app_icon.jpg',
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) =>
-                                Icon(Icons.auto_awesome, size: 48, color: AppColors.primary),
+                                const Icon(Icons.auto_awesome, size: 36, color: AppColors.primary),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       Text(
                         'Kingdom Sponsor',
                         textAlign: TextAlign.center,

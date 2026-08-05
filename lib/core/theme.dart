@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const primary = Color(0xFFE65100); // deep orange
@@ -22,7 +21,7 @@ ThemeData buildTheme() {
       surface: AppColors.surface,
     ),
     scaffoldBackgroundColor: AppColors.background,
-    fontFamily: GoogleFonts.inter().fontFamily,
+    fontFamily: 'Roboto',
   );
   return base.copyWith(
     appBarTheme: const AppBarTheme(

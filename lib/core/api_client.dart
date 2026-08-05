@@ -49,10 +49,18 @@ class ApiClient {
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
-      {bool auth = false}) async {
+Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
+       {bool auth = false}) async {
     final res = await _send(() =>
         _client.post(Uri.parse('$_baseUrl$path'),
+            headers: _headers(auth: auth), body: jsonEncode(body)));
+    return _decode(res);
+  }
+
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body,
+      {bool auth = false}) async {
+    final res = await _send(() =>
+        _client.put(Uri.parse('$_baseUrl$path'),
             headers: _headers(auth: auth), body: jsonEncode(body)));
     return _decode(res);
   }
@@ -237,6 +245,45 @@ class ApiClient {
   Future<Map<String, dynamic>> deleteCampaign(int campaignId, {String reason = ''}) {
     return post('/api/admin/campaigns/$campaignId/delete',
         {'reason': reason}, auth: true);
+  }
+
+  /// Admin: update a campaign's title, description, goal, status, etc.
+  Future<Map<String, dynamic>> updateCampaign(int campaignId, Map<String, dynamic> body) {
+    return put('/api/admin/campaigns/$campaignId', body, auth: true);
+  }
+
+  /// Admin: get SMS network status text.
+  Future<Map<String, dynamic>> getSmsStatus() async {
+    final res = await get('/api/admin/sms-status');
+    return res;
+  }
+
+  /// Admin: update SMS network status text.
+  Future<Map<String, dynamic>> setSmsStatus(String text) {
+    return put('/api/admin/sms-status', {'text': text}, auth: true);
+  }
+
+  /// Admin: get failed login attempts.
+  Future<List<dynamic>> getFailedLogins() async {
+    final res = await get('/api/admin/failed-logins', auth: true);
+    return res['failedLogins'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: check if Telegram bot is configured.
+  Future<Map<String, dynamic>> getTelegramConfig() async {
+    final res = await get('/api/admin/telegram-config', auth: true);
+    return res;
+  }
+
+  /// Admin: set Telegram bot token and chat ID.
+  Future<Map<String, dynamic>> setTelegramConfig({String? token, String? chatId}) {
+    return put('/api/admin/telegram-config',
+        {'token': token, 'chatId': chatId}, auth: true);
+  }
+
+  /// Admin: trigger a test intruder alert (Telegram + SMS).
+  Future<Map<String, dynamic>> testIntruderAlert() {
+    return post('/api/admin/intruder-alert/test', {}, auth: true);
   }
 
   /// Admin: all campaigns (any status) with host and balance info.

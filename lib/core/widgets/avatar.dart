@@ -22,25 +22,9 @@ class Avatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
     final bg = background ?? AppColors.primary.withValues(alpha: 0.12);
-    if (url == null || url!.isEmpty) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: bg,
-        child: Text(
-          initial,
-          style: TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.w800,
-            fontSize: radius * 0.8,
-          ),
-        ),
-      );
-    }
-    return CircleAvatar(
+    final initials = CircleAvatar(
       radius: radius,
       backgroundColor: bg,
-      backgroundImage: CachedNetworkImageProvider(url!),
-      onBackgroundImageError: (_, _) {},
       child: Text(
         initial,
         style: TextStyle(
@@ -48,6 +32,19 @@ class Avatar extends StatelessWidget {
           fontWeight: FontWeight.w800,
           fontSize: radius * 0.8,
         ),
+      ),
+    );
+
+    if (url == null || url!.isEmpty) return initials;
+
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: url!,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => initials,
+        errorWidget: (_, _, _) => initials,
       ),
     );
   }

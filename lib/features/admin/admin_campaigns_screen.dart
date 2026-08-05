@@ -120,6 +120,169 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
     }
   }
 
+  Future<void> _editCampaign(Campaign campaign) async {
+    final titleController = TextEditingController(text: campaign.title);
+    final descriptionController = TextEditingController(text: campaign.description);
+    final goalController = TextEditingController(
+      text: campaign.hasGoal ? (campaign.goalCents / 100).toString() : '',
+    );
+    final minWithdrawController = TextEditingController(
+      text: campaign.minWithdrawCents != null ? (campaign.minWithdrawCents! / 100).toString() : '',
+    );
+    final minSponsorsController = TextEditingController(text: '1');
+    final endsAtController = TextEditingController(
+      text: campaign.endsAt != null ? campaign.endsAt!.substring(0, 10) : '',
+    );
+    String status = campaign.status;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: AlertDialog(
+            title: const Text('Edit campaign'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Title',
+                      prefixIcon: Icon(LucideIcons.pencil, size: 18),
+                    ),
+                    maxLength: 200,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description',
+                      prefixIcon: Icon(LucideIcons.fileText, size: 18),
+                      alignLabelWithHint: true,
+                    ),
+                    maxLines: 3,
+                    maxLength: 2000,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: goalController,
+                    decoration: const InputDecoration(
+                      labelText: 'Goal (ZMW)',
+                      prefixIcon: Icon(LucideIcons.target, size: 18),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: minWithdrawController,
+                    decoration: const InputDecoration(
+                      labelText: 'Min withdraw (ZMW)',
+                      prefixIcon: Icon(LucideIcons.download, size: 18),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: endsAtController,
+                    decoration: const InputDecoration(
+                      labelText: 'End date (YYYY-MM-DD)',
+                      prefixIcon: Icon(LucideIcons.calendar, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: status,
+                    items: ['active', 'draft', 'ended']
+                        .map((s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(s),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => status = v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      prefixIcon: Icon(LucideIcons.flag, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(ctx, true),
+                icon: const Icon(LucideIcons.save, size: 16),
+                label: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    titleController.dispose();
+    descriptionController.dispose();
+    goalController.dispose();
+    minWithdrawController.dispose();
+    minSponsorsController.dispose();
+    endsAtController.dispose();
+
+    if (ok != true) return;
+
+    final title = titleController.text.trim();
+    final description = descriptionController.text.trim();
+    final goalStr = goalController.text.trim();
+    final minWithdrawStr = minWithdrawController.text.trim();
+    final endsAtStr = endsAtController.text.trim();
+
+    final body = <String, dynamic>{};
+    if (title.isNotEmpty) body['title'] = title;
+    if (description.isNotEmpty) body['description'] = description;
+    if (goalStr.isNotEmpty) {
+      final goal = double.tryParse(goalStr);
+      if (goal != null && goal > 0) body['goalCents'] = (goal * 100).round();
+    }
+    if (minWithdrawStr.isNotEmpty) {
+      final minW = double.tryParse(minWithdrawStr);
+      if (minW != null && minW > 0) body['minWithdrawCents'] = (minW * 100).round();
+    }
+    if (endsAtStr.isNotEmpty) {
+      body['endsAt'] = endsAtStr;
+    } else {
+      body['endsAt'] = null;
+    }
+    body['status'] = status;
+
+    try {
+      await ref.read(apiClientProvider).updateCampaign(campaign.id, body);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('"${campaign.title}" updated.')),
+      );
+      await _load();
+      ref.invalidate(adminDataProvider);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update. Try again.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final campaigns = _campaigns;
@@ -179,10 +342,20 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                       isThreeLine: false,
                       trailing: deleted
                           ? null
-                          : IconButton(
-                              tooltip: 'Delete campaign',
-                              icon: const Icon(LucideIcons.trash2, color: AppColors.danger),
-                              onPressed: () => _confirmDelete(c),
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Edit campaign',
+                                  icon: const Icon(LucideIcons.pencil, color: AppColors.primary),
+                                  onPressed: () => _editCampaign(c),
+                                ),
+                                IconButton(
+                                  tooltip: 'Delete campaign',
+                                  icon: const Icon(LucideIcons.trash2, color: AppColors.danger),
+                                  onPressed: () => _confirmDelete(c),
+                                ),
+                              ],
                             ),
                       onTap: deleted ? null : () => context.push('/campaign/${c.id}'),
                     ),

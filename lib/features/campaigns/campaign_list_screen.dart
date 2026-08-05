@@ -38,44 +38,36 @@ class CampaignListScreen extends ConsumerWidget {
               tooltip: 'Admin dashboard',
               onPressed: () => context.push('/admin'),
             ),
-          IconButton(
-            icon: const Icon(LucideIcons.repeat),
-            tooltip: 'Monthly reminders',
-            onPressed: () => context.push('/pledges'),
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.user),
-            onPressed: () => context.push('/host'),
-          ),
-          IconButton(
-            icon: const Icon(LucideIcons.settings),
-            tooltip: 'Settings',
-            onPressed: () => context.push('/settings'),
-          ),
         ],
       ),
-      body: Column(
-        children: [
-          if (offline)
-            Container(
-              width: double.infinity,
-              color: AppColors.gold.withValues(alpha: 0.15),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: const Row(
-                children: [
-                  Icon(LucideIcons.wifiOff, size: 16, color: Color(0xFF8A6A00)),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Offline — showing last saved campaigns',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: campaigns.when(
+body: Column(
+         children: [
+           if (offline)
+             Container(
+               width: double.infinity,
+               color: AppColors.gold.withValues(alpha: 0.15),
+               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+               child: const Row(
+                 children: [
+                   Icon(LucideIcons.wifiOff, size: 16, color: Color(0xFF8A6A00)),
+                   SizedBox(width: 8),
+                   Expanded(
+                     child: Text(
+                       'Offline — showing last saved campaigns',
+                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                     ),
+                   ),
+                 ],
+               ),
+             ),
+           const _EventUseCasesBanner(),
+const SizedBox(height: 8),
+          const _MtnStatusBanner(),
+          const SizedBox(height: 8),
+          const _AirtimeComingSoonBanner(),
+          if (offline) const SizedBox(height: 8),
+           Expanded(
+             child: campaigns.when(
               loading: () => const _ListSkeleton(),
               error: (e, _) =>
                   _ErrorRetry(message: '$e', onRetry: () => ref.invalidate(campaignsProvider)),
@@ -108,6 +100,16 @@ class _CampaignCard extends StatelessWidget {
     final theme = Theme.of(context);
     return Card(
       clipBehavior: Clip.antiAlias,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: isTrending
+              ? AppColors.gold.withValues(alpha: 0.4)
+              : AppColors.primary.withValues(alpha: 0.2),
+          width: 2,
+        ),
+      ),
       child: InkWell(
         onTap: () => context.push('/campaign/${campaign.id}'),
         child: Padding(
@@ -123,7 +125,9 @@ class _CampaignCard extends StatelessWidget {
                     height: 52,
                     clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: isTrending
+                          ? AppColors.gold.withValues(alpha: 0.12)
+                          : AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     padding: const EdgeInsets.all(6),
@@ -299,6 +303,182 @@ class _ErrorRetry extends StatelessWidget {
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner showing the app can be used for many types of events and
+/// contributions across Zambia.
+class _EventUseCasesBanner extends ConsumerWidget {
+  const _EventUseCasesBanner();
+
+  static const _events = [
+    ('Chilanga Mulilo', LucideIcons.flame),
+    ('Wedding', LucideIcons.heart),
+    ('BuyMeCoffee', LucideIcons.coffee),
+    ('Trip', LucideIcons.plane),
+    ('Committee Contributions', LucideIcons.users),
+    ('Monthly Contributions', LucideIcons.calendar),
+    ('Church Offerings', LucideIcons.church),
+    ('Any Contribution', LucideIcons.hand),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.tent, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Raise funds for any event',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final (name, icon) in _events)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Banner showing the current SMS network status.
+/// Superadmins can edit the text from the admin dashboard.
+class _MtnStatusBanner extends ConsumerWidget {
+  const _MtnStatusBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.phone, size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'SMS verification is currently available for Airtel and Zamtel numbers. '
+              'MTN OTP delivery is temporarily unavailable — we are working on it.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textDark,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Coming soon banner for buying airtime for loved ones.
+class _AirtimeComingSoonBanner extends ConsumerWidget {
+  const _AirtimeComingSoonBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.phoneCall, size: 18, color: AppColors.gold),
+                const SizedBox(width: 8),
+                Text(
+                  'Send airtime to someone you care for',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Top up mobile airtime for any Airtel or Zamtel number in Zambia — '
+              'instantly, with no app needed on their end. Perfect for '
+              'birthdays, emergencies, or just because. '
+              'Commissions go to worthy causes, no fees to the recipient.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: AppColors.textMuted, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.sparkles, size: 12, color: AppColors.gold),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Coming soon',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

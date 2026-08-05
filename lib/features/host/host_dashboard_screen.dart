@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -15,7 +14,6 @@ import '../auth/auth_controller.dart';
 import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
-import 'dart:math' as math;
 
 class HostDashboardScreen extends ConsumerWidget {
   const HostDashboardScreen({super.key});
@@ -576,131 +574,23 @@ class _HostCampaignCard extends ConsumerWidget {
 
   const _HostCampaignCard({required this.campaign});
 
-  Future<void> _uploadLogo(WidgetRef ref, BuildContext context) async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (!context.mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await ref.read(apiClientProvider).uploadLogo(campaign.id, bytes, file.name);
-      ref.invalidate(hostProvider);
-      messenger.showSnackBar(const SnackBar(content: Text('Logo updated')));
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
-    }
-  }
-
-  Future<void> _postAnnouncement(WidgetRef ref, BuildContext context) async {
-    final controller = TextEditingController();
-    var posting = false;
-
-    final posted = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 8,
-            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Post an update to ${campaign.title}',
-                textAlign: TextAlign.center,
-                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                minLines: 3,
-                maxLines: 6,
-                maxLength: 500,
-                textCapitalization: TextCapitalization.sentences,
-                onChanged: (_) => setSheetState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Share progress, thank your donors, or announce news…',
-                  alignLabelWithHint: true,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: posting ? null : () => Navigator.pop(ctx, false),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: posting || controller.text.trim().isEmpty
-                          ? null
-                          : () async {
-                              setSheetState(() => posting = true);
-                              final messenger = ScaffoldMessenger.of(ctx);
-                              try {
-                                await ref
-                                    .read(apiClientProvider)
-                                    .postAnnouncement(campaign.id, controller.text.trim());
-                                if (ctx.mounted) Navigator.pop(ctx, true);
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Update posted — donors can now see it')),
-                                );
-                                ref.invalidate(hostProvider);
-                              } on ApiException catch (e) {
-                                setSheetState(() => posting = false);
-                                messenger.showSnackBar(SnackBar(content: Text(e.message)));
-                              } catch (_) {
-                                setSheetState(() => posting = false);
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Could not post the update. Try again.')),
-                                );
-                              }
-                            },
-                      icon: posting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(LucideIcons.send, size: 18),
-                      label: const Text('Post'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    controller.dispose();
-    if (posted == true) ref.invalidate(hostProvider);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final available = math.max(0, campaign.availableCents ?? 0);
+    final available = campaign.availableCents ?? 0;
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
 
     return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: campaign.status == 'active'
+              ? AppColors.primary.withValues(alpha: 0.2)
+              : AppColors.textMuted.withValues(alpha: 0.2),
+          width: 2,
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -713,7 +603,9 @@ class _HostCampaignCard extends ConsumerWidget {
                   height: 40,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
+                    color: campaign.status == 'active'
+                        ? AppColors.primary.withValues(alpha: 0.1)
+                        : AppColors.textMuted.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   padding: const EdgeInsets.all(4),
@@ -726,21 +618,6 @@ class _HostCampaignCard extends ConsumerWidget {
                     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
-                IconButton(
-                  tooltip: campaign.logoUrl == null ? 'Add logo' : 'Change logo',
-                  icon: Icon(
-                    campaign.logoUrl == null ? LucideIcons.imagePlus : LucideIcons.image,
-                    size: 18,
-                    color: AppColors.textMuted,
-                  ),
-                  onPressed: () => _uploadLogo(ref, context),
-                ),
-                if (campaign.status == 'active')
-                  IconButton(
-                    tooltip: 'Post update',
-                    icon: const Icon(LucideIcons.megaphone, size: 18, color: AppColors.textMuted),
-                    onPressed: () => _postAnnouncement(ref, context),
-                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -805,8 +682,8 @@ class _HostCampaignCard extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Available = confirmed donations minus the platform fee (1%, minimum K3) minus the mobile money fee (2.5%) minus anything already paid out.\n\n'
-                              'Example: a K50 donation gives K50.00 - K3.00 platform fee - K1.25 mobile money = K45.75 available. Withdraw when the balance reaches the minimum shown below.',
+                              'Available = confirmed donations minus anything already paid out. Platform fee (1%, min K3) and mobile money fee (2.5%) are paid by the donor on top of their gift, so the campaign receives the full gift amount.\n\n'
+                              'Example: a K50 donation gives K50.00 to the campaign. The donor pays K50.00 + K3.00 (platform) + K1.25 (mobile money) = K54.25 total. Withdraw when the balance reaches the minimum shown below.',
                               style: Theme.of(ctx)
                                   .textTheme
                                   .bodyMedium

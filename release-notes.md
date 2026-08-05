@@ -9,7 +9,7 @@
 
 ### Fees
 - Donors pay the platform cut (K3 min / 1%) plus Lipila's collection fee (2.5%) on top of their donation.
-- The host campaign receives the donation minus those collection fees.
+- The host campaign receives the full gift amount — collection fees are paid by the donor, not deducted from the donation.
 - On payout, both Lipila's disbursement fee (1.5%) **and** the platform's payout cut (K3 min / 1%) are deducted — the platform charges on collection and on disbursement, the same model as Lipila.
 - Payouts run automatically each day, once a campaign's balance reaches its payout minimum.
 

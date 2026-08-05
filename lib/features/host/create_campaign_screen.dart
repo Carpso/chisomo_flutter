@@ -157,7 +157,10 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
             keyboardType: TextInputType.number,
             decoration: const InputDecoration(
               labelText: 'Minimum payout (K)',
-              helperText: 'Funds are sent to your mobile money automatically once available balance reaches this amount',
+              helperText:
+                  'Funds are sent to your mobile money automatically once your available balance reaches this amount. '
+                  'Available = confirmed donations (donors pay platform fee 1% min K3 + mobile money 2.5% on top). '
+                  'Set this to the minimum you want to withdraw at once.',
             ),
           ),
           const SizedBox(height: 12),

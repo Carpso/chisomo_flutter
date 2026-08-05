@@ -43,7 +43,7 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
-        bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+        bottom: MediaQuery.viewInsetsOf(ctx).bottom + MediaQuery.paddingOf(ctx).bottom + 16,
         top: 16,
       ),
       child: SingleChildScrollView(
