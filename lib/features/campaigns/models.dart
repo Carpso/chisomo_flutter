@@ -747,11 +747,24 @@ class AdminRecent {
       );
 }
 
+class ReferralEntry {
+  final String username;
+  final int invites;
+
+  const ReferralEntry({required this.username, required this.invites});
+
+  factory ReferralEntry.fromJson(Map<String, dynamic> j) => ReferralEntry(
+        username: j['username'] as String? ?? 'Giver',
+        invites: j['invites'] as int? ?? 0,
+      );
+}
+
 class AdminData {
   final AdminStats stats;
   final List<HostApplication> applications;
   final List<Campaign> topCampaigns;
   final List<LeaderboardEntry> topDonors;
+  final List<ReferralEntry> topReferrers;
   final List<AdminRecent> recent;
   final List<Campaign> allCampaigns;
 
@@ -760,6 +773,7 @@ class AdminData {
     required this.applications,
     required this.topCampaigns,
     required this.topDonors,
+    required this.topReferrers,
     required this.recent,
     required this.allCampaigns,
   });
@@ -776,6 +790,9 @@ class AdminData {
         topDonors: (statsJson['topDonors'] as List<dynamic>? ?? [])
             .map((d) => LeaderboardEntry.fromJson(d as Map<String, dynamic>))
             .toList(),
+        topReferrers: (statsJson['topReferrers'] as List<dynamic>? ?? [])
+            .map((r) => ReferralEntry.fromJson(r as Map<String, dynamic>))
+            .toList(),
         recent: (statsJson['recent'] as List<dynamic>? ?? [])
             .map((r) => AdminRecent.fromJson(r as Map<String, dynamic>))
             .toList(),
@@ -785,12 +802,51 @@ class AdminData {
       );
 }
 
+class HostPayout {
+  final int id;
+  final String campaignTitle;
+  final int amountCents;
+  final int disbursementFeeCents;
+  final int platformFeeCents;
+  final String status;
+  final String? reference;
+  final String date;
+
+  const HostPayout({
+    required this.id,
+    required this.campaignTitle,
+    required this.amountCents,
+    required this.disbursementFeeCents,
+    required this.platformFeeCents,
+    required this.status,
+    required this.reference,
+    required this.date,
+  });
+
+  factory HostPayout.fromJson(Map<String, dynamic> j) => HostPayout(
+        id: j['id'] as int? ?? 0,
+        campaignTitle: j['campaignTitle'] as String? ?? '',
+        amountCents: j['amountCents'] as int? ?? 0,
+        disbursementFeeCents: j['disbursementFeeCents'] as int? ?? 0,
+        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+        status: j['status'] as String? ?? '',
+        reference: j['reference'] as String?,
+        date: j['date'] as String? ?? '',
+      );
+}
+
 class HostData {
   final HostUser user;
   final List<Campaign> campaigns;
   final List<Transaction> transactions;
+  final List<HostPayout> payouts;
 
-  const HostData({required this.user, required this.campaigns, required this.transactions});
+  const HostData({
+    required this.user,
+    required this.campaigns,
+    required this.transactions,
+    required this.payouts,
+  });
 
   factory HostData.fromJson(Map<String, dynamic> j) => HostData(
         user: HostUser.fromJson(j['user'] as Map<String, dynamic>? ?? {}),
@@ -799,6 +855,9 @@ class HostData {
             .toList(),
         transactions: (j['transactions'] as List<dynamic>? ?? [])
             .map((t) => Transaction.fromJson(t as Map<String, dynamic>))
+            .toList(),
+        payouts: (j['payouts'] as List<dynamic>? ?? [])
+            .map((p) => HostPayout.fromJson(p as Map<String, dynamic>))
             .toList(),
       );
 }

@@ -85,10 +85,15 @@ class AuthController extends AsyncNotifier<AuthState> {
     return res['debugCode'] as String?;
   }
 
-  Future<void> verifyOtp(String phone, String code) async {
+  Future<void> verifyOtp(String phone, String code, {String? referralCode}) async {
     final api = ref.read(apiClientProvider);
     try {
-      final res = await api.post('/api/auth/verify-otp', {'phone': phone, 'code': code});
+      final res = await api.post('/api/auth/verify-otp', {
+        'phone': phone,
+        'code': code,
+        if (referralCode != null && referralCode.trim().isNotEmpty)
+          'referralCode': referralCode.trim(),
+      });
       final token = res['token'] as String;
       api.token = token;
       await _storage.write(key: tokenStorageKey, value: token);

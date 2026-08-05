@@ -84,6 +84,10 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> {
     super.initState();
     DeepLinks.init((uri) {
       if (uri.scheme != 'kingdomsponsor' || !mounted) return;
+      final refCode = uri.queryParameters['ref'];
+      if (refCode != null && refCode.trim().isNotEmpty) {
+        ref.read(referralCodeProvider.notifier).set(refCode.trim().toUpperCase());
+      }
       final parts = uri.pathSegments;
       if (parts.isNotEmpty && parts.first == 'campaign' && parts.length > 1) {
         final id = int.tryParse(parts[1]);

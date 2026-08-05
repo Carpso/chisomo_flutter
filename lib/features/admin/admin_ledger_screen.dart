@@ -25,6 +25,7 @@ class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScree
   };
 
   String _filter = 'All';
+  bool _loadingMore = false;
 
   @override
   Widget build(BuildContext context) {
@@ -79,9 +80,49 @@ class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScree
                       ? const _Empty(message: 'No contributions yet.')
                       : ListView.separated(
                           padding: const EdgeInsets.all(12),
-                          itemCount: txs.length,
+                          itemCount: txs.length + 1,
                           separatorBuilder: (_, _) => const SizedBox(height: 6),
-                          itemBuilder: (context, i) => _TxTile(tx: txs[i]),
+                          itemBuilder: (context, i) => i < txs.length
+                              ? _TxTile(tx: txs[i])
+                              : Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: OutlinedButton.icon(
+                                    onPressed: _loadingMore
+                                        ? null
+                                        : () async {
+                                            setState(() => _loadingMore = true);
+                                            try {
+                                              await ref
+                                                  .read(adminLedgerProvider.notifier)
+                                                  .loadMoreTransactions();
+                                            } catch (_) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context)
+                                                    .showSnackBar(const SnackBar(
+                                                        content: Text(
+                                                            'Could not load more. Try again.')));
+                                              }
+                                            } finally {
+                                              if (mounted) {
+                                                setState(() =>
+                                                    _loadingMore = false);
+                                              }
+                                            }
+                                          },
+                                    icon: _loadingMore
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Icon(LucideIcons.chevronsDown,
+                                            size: 16),
+                                    label: Text(_loadingMore
+                                        ? 'Loading…'
+                                        : 'Load more'),
+                                  ),
+                                ),
                         ),
                 );
               },

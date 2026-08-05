@@ -262,6 +262,35 @@ class ApiClient {
     return res['receipts'] as List<dynamic>? ?? [];
   }
 
+  /// My referral code + share link.
+  Future<Map<String, dynamic>> getMyReferral() {
+    return get('/api/me/referral', auth: true);
+  }
+
+  /// People I referred (username, phone, date) + totals.
+  Future<Map<String, dynamic>> getMyReferrals() {
+    return get('/api/me/referrals', auth: true);
+  }
+
+  /// Admin: refund a promotion fee back to the host's mobile money.
+  Future<Map<String, dynamic>> refundPromotion(int id) {
+    return post('/api/admin/promotions/$id/refund', {}, auth: true);
+  }
+
+  /// Admin: host payouts + sweeps ledger.
+  Future<List<dynamic>> getAdminPayouts({int limit = 100, int offset = 0}) async {
+    final res =
+        await get('/api/admin/payouts?limit=$limit&offset=$offset', auth: true);
+    return res['payouts'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: paginated contribution ledger.
+  Future<Map<String, dynamic>> getAdminTransactions(
+      {String status = '', int limit = 500, int offset = 0}) {
+    return get('/api/admin/transactions?status=$status&limit=$limit&offset=$offset',
+        auth: true);
+  }
+
   /// Checks the Lipila collection status for a contribution.
   Future<Map<String, dynamic>> checkContributionStatus(String referenceId) {
     return get('/api/contributions/status/$referenceId');

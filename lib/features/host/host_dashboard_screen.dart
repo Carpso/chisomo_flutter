@@ -214,27 +214,27 @@ class HostDashboardScreen extends ConsumerWidget {
                                      ? AppColors.danger
                                      : AppColors.gold,
                            ),
-                           title: Text('${t.displayName} - ${formatKwacha(t.amountCents)}'),
-                           subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.createdAt}'),
-                           isThreeLine: true,
-                           trailing: t.status == 'confirmed'
-                               ? IconButton(
-                                   tooltip: 'Download receipt',
-                                   icon: const Icon(LucideIcons.download, size: 18),
-                                   onPressed: () async {
-                                     final url = ref.read(apiClientProvider).receiptUrl(t.id);
-                                     final uri = Uri.parse(url);
-                                     final messenger = ScaffoldMessenger.of(context);
-                                     if (await canLaunchUrl(uri)) {
-                                       await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                     } else {
-                                       messenger.showSnackBar(
-                                         const SnackBar(content: Text('Could not open receipt')),
-                                       );
-                                     }
-                                   },
-                                 )
-                               : t.status == 'pending' && t.lipilaReference != null
+                            title: Text('${t.displayName} - ${formatKwacha(t.amountCents)}'),
+                            subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.createdAt}'),
+                            isThreeLine: true,
+                            trailing: t.status == 'confirmed'
+                                ? IconButton(
+                                    tooltip: 'Download receipt',
+                                    icon: const Icon(LucideIcons.download, size: 18),
+                                    onPressed: () async {
+                                      final url = ref.read(apiClientProvider).receiptUrl(t.id);
+                                      final uri = Uri.parse(url);
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      if (await canLaunchUrl(uri)) {
+                                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      } else {
+                                        messenger.showSnackBar(
+                                          const SnackBar(content: Text('Could not open receipt')),
+                                        );
+                                      }
+                                    },
+                                  )
+                                : t.status == 'pending' && t.lipilaReference != null
                                    ? IconButton(
                                        tooltip: 'Check status',
                                        icon: const Icon(LucideIcons.refreshCw, size: 18),
@@ -271,9 +271,58 @@ class HostDashboardScreen extends ConsumerWidget {
                                           }
                                          }
                                        },
-                                     )
-                                   : null,
-                         ),
+                                      )
+                                    : null,
+                          ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 24),
+              Text(
+                'Payout history',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              if (data.payouts.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
+                    'Your payouts to mobile money will appear here.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+                  ),
+                )
+              else
+                Card(
+                  child: Column(
+                    children: [
+                      for (final p in data.payouts)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(
+                            p.status == 'success'
+                                ? LucideIcons.send
+                                : p.status == 'failed'
+                                    ? LucideIcons.xCircle
+                                    : LucideIcons.clock,
+                            color: p.status == 'success'
+                                ? AppColors.primary
+                                : p.status == 'failed'
+                                    ? AppColors.danger
+                                    : AppColors.gold,
+                          ),
+                          title: Text(
+                            '${p.campaignTitle} • ${formatKwacha(p.amountCents)}',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            '${p.status} • ${p.date}${p.reference == null ? '' : '\n${p.reference}'}',
+                          ),
+                          isThreeLine: true,
+                          trailing: Text(
+                            'fees ${formatKwacha(p.platformFeeCents + p.disbursementFeeCents)}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                          ),
+                        ),
                     ],
                   ),
                 ),

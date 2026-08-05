@@ -1,7 +1,7 @@
 name: kingdom_sponsor_app
 description: "Kingdom Sponsor - neutral fundraising platform app."
 publish_to: 'none'
-version: 0.3.1
+version: 0.4.0
 
 environment:
   sdk: ^3.9.0

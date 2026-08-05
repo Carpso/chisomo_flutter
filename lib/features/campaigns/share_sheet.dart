@@ -7,18 +7,36 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../auth/auth_controller.dart';
 import '../campaigns/models.dart';
+
+/// Returns the signed-in user's referral code for link tagging (best-effort).
+Future<String?> _refQuery(ApiClient api) async {
+  try {
+    final res = await api.getMyReferral();
+    final code = res['code'] as String?;
+    return (code == null || code.trim().isEmpty) ? null : code.trim();
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Bottom sheet offering WhatsApp share, a QR code with app icon, and copy-link.
 Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campaign) async {
   final api = ref.read(apiClientProvider);
-  final url = api.shareUrl(campaign.id);
-  final deepLink = api.deepLink(campaign.id);
+  final auth = ref.read(authControllerProvider).value;
+  // When the signed-in user has a referral code, tag the shared link so new
+  // signups who open it are attributed to them.
+  final refParam = auth != null ? await _refQuery(api) : null;
+  final refSuffix = refParam == null ? '' : '?ref=$refParam';
+  final url = '${api.shareUrl(campaign.id)}$refSuffix';
+  final deepLink = '${api.deepLink(campaign.id)}$refSuffix';
   final playStore = ApiClient.playStoreUrl;
   final text =
       '${campaign.title}\n${campaign.description}\nGive here: $url\nNo app yet? Get Kingdom Sponsor: $playStore';
   final waUrl = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
 
+  if (!context.mounted) return;
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,

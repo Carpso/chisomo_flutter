@@ -545,6 +545,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               children: [
                 ListTile(
+                  leading: const Icon(LucideIcons.userPlus, color: AppColors.primary),
+                  title: const Text('Invite friends'),
+                  subtitle: const Text('Share your referral code and earn the app growth'),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => context.push('/settings/referrals'),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
                   leading: const Icon(LucideIcons.receipt, color: AppColors.primary),
                   title: const Text('My receipts'),
                   subtitle: const Text('Download PDF receipts for your gifts'),
@@ -591,7 +599,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           const SizedBox(height: 24),
           Text(
-            'Kingdom Sponsor v0.3.0',
+            'Kingdom Sponsor v0.4.0',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),

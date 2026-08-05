@@ -183,7 +183,7 @@ class AdminLedgerController extends AsyncNotifier<AdminLedger> {
   @override
   Future<AdminLedger> build() async {
     final api = ref.read(apiClientProvider);
-    final txs = await api.get('/api/admin/transactions', auth: true);
+    final txs = await api.getAdminTransactions();
     final disbs = await api.get('/api/admin/disbursements', auth: true);
     return AdminLedger(
       transactions: (txs['transactions'] as List<dynamic>? ?? [])
@@ -198,6 +198,23 @@ class AdminLedgerController extends AsyncNotifier<AdminLedger> {
   Future<void> refresh() async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => build());
+  }
+
+  /// Appends the next page of the transaction ledger (server caps at 1000).
+  Future<void> loadMoreTransactions() async {
+    final current = state.value;
+    if (current == null) return;
+    final res = await ref.read(apiClientProvider).getAdminTransactions(
+          offset: current.transactions.length,
+        );
+    final more = (res['transactions'] as List<dynamic>? ?? [])
+        .map((t) => AdminTransaction.fromJson(t as Map<String, dynamic>))
+        .toList();
+    if (more.isEmpty) return;
+    state = AsyncValue.data(AdminLedger(
+      transactions: [...current.transactions, ...more],
+      disbursements: current.disbursements,
+    ));
   }
 
   /// Fetches the full detail of a single transaction (admin ledger).

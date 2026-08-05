@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/phone_field.dart';
@@ -87,10 +88,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _submitting = true;
       _error = null;
     });
+    final referral = ref.read(referralCodeProvider);
     try {
       await ref
           .read(authControllerProvider.notifier)
-          .verifyOtp(_phoneE164, _otpController.text.trim());
+          .verifyOtp(_phoneE164, _otpController.text.trim(), referralCode: referral);
+      ref.read(referralCodeProvider.notifier).set(null);
       if (mounted) context.go('/');
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);

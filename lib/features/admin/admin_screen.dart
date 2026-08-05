@@ -144,6 +144,41 @@ class AdminScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 20),
               ],
+              if (data.topReferrers.isNotEmpty) ...[
+                _SectionTitle(icon: LucideIcons.userPlus, title: 'Top referrers'),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      for (final r in data.topReferrers)
+                        ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                            child: Text(
+                              r.username.substring(0, 1),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primary,
+                                  fontSize: 14),
+                            ),
+                          ),
+                          title: Text(r.username,
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          trailing: Text(
+                            '${r.invites} invites',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
               if (data.recent.isNotEmpty) ...[
                 _SectionTitle(icon: LucideIcons.receipt, title: 'Recent contributions'),
                 const SizedBox(height: 8),
@@ -863,6 +898,63 @@ class _PromotionsSection extends ConsumerWidget {
                                       ),
                                     ),
                                   ],
+                                ),
+                              ],
+                              if (p.status == 'rejected' ||
+                                  p.status == 'expired' ||
+                                  p.status == 'active') ...[
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 6),
+                                      foregroundColor: AppColors.danger,
+                                      side: const BorderSide(color: AppColors.danger),
+                                    ),
+                                    onPressed: () async {
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text('Refund promotion fee?'),
+                                          content: Text(
+                                              'K${(p.amountCents / 100).toStringAsFixed(0)} will be sent back to the host\'s mobile money (${p.hostPhone}).'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            FilledButton(
+                                              style: FilledButton.styleFrom(
+                                                  backgroundColor: AppColors.danger),
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: const Text('Refund'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed != true || !context.mounted) return;
+                                      final messenger = ScaffoldMessenger.of(context);
+                                      try {
+                                        final res = await ref
+                                            .read(apiClientProvider)
+                                            .refundPromotion(p.id);
+                                        ref.invalidate(promotionsProvider);
+                                        messenger.showSnackBar(SnackBar(
+                                            content: Text(res['message']
+                                                    as String? ??
+                                                'Refund started')));
+                                      } on ApiException catch (e) {
+                                        messenger.showSnackBar(
+                                            SnackBar(content: Text(e.message)));
+                                      }
+                                    },
+                                    icon: const Icon(LucideIcons.rotateCcw, size: 15),
+                                    label: const Text('Refund'),
+                                  ),
                                 ),
                               ],
                             ],

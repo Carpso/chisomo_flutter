@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/widgets/bottom_nav_shell.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/referrals_screen.dart';
 import '../features/auth/settings_screen.dart';
 import '../features/campaigns/campaign_detail_screen.dart';
 import '../features/campaigns/campaign_list_screen.dart';
@@ -28,6 +29,17 @@ class PendingDeepLink extends Notifier<String?> {
 }
 
 final pendingDeepLinkProvider = NotifierProvider<PendingDeepLink, String?>(PendingDeepLink.new);
+
+/// Referral code captured from a `kingdomsponsor://campaign/<id>?ref=CODE`
+/// deep link; the login screen passes it to OTP verification for new signups.
+class ReferralCode extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? code) => state = code;
+}
+
+final referralCodeProvider = NotifierProvider<ReferralCode, String?>(ReferralCode.new);
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -78,6 +90,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/receipts',
             builder: (context, state) => const MyReceiptsScreen(),
+          ),
+          GoRoute(
+            path: '/settings/referrals',
+            builder: (context, state) => const ReferralsScreen(),
           ),
           GoRoute(
             path: '/settings/support',
