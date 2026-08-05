@@ -245,6 +245,11 @@ class ApiClient {
     return res['campaigns'] as List<dynamic>? ?? [];
   }
 
+  /// Resend a Lipila collection prompt for a pending contribution.
+  Future<Map<String, dynamic>> resendPrompt(String referenceId) {
+    return post('/api/contributions/$referenceId/resend-prompt', {}, auth: true);
+  }
+
   /// Submits a support ticket to the superadmin.
   Future<Map<String, dynamic>> createSupportTicket(String subject, String message) {
     return post('/api/support/tickets',

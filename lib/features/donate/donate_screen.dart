@@ -111,6 +111,32 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     }
   }
 
+  Future<void> _resendPrompt() async {
+    final refId = _referenceId;
+    if (refId == null) return;
+    setState(() => _error = null);
+    try {
+      final res = await ref.read(apiClientProvider).resendPrompt(refId);
+      if (mounted) {
+        setState(() {
+          _referenceId = res['referenceId'] as String? ?? refId;
+          _error = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A new payment prompt has been sent.')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _error = e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not resend. Try again.');
+      }
+    }
+  }
+
   void _pollStatus() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -153,7 +179,10 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
       appBar: AppBar(title: const Text('Give')),
       body: switch (_phase) {
         _Phase.form => _buildForm(context),
-        _Phase.awaitingPin => const _AwaitingPin(),
+         _Phase.awaitingPin => _AwaitingPin(
+                referenceId: _referenceId ?? '',
+                onResend: _resendPrompt,
+              ),
         _Phase.done => _buildDone(context),
         _Phase.failed => _buildFailed(context),
       },
@@ -456,11 +485,15 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   }
 }
 
-class _AwaitingPin extends StatelessWidget {
-  const _AwaitingPin();
+class _AwaitingPin extends ConsumerWidget {
+  final String referenceId;
+  final VoidCallback onResend;
+
+  const _AwaitingPin({required this.referenceId, required this.onResend});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -468,10 +501,10 @@ class _AwaitingPin extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
              const SizedBox(
-               width: 56,
-               height: 56,
-               child: AppIconSpinner(size: 56),
-             ),
+                width: 56,
+                height: 56,
+                child: AppIconSpinner(size: 56),
+              ),
             const SizedBox(height: 24),
             Text(
               'Check your phone',
@@ -486,6 +519,17 @@ class _AwaitingPin extends StatelessWidget {
             Text(
               'If you don\'t see it, dial *115# on MTN.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: onResend,
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
+              label: const Text('Resend prompt'),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Reference: $referenceId',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
           ],
         ),

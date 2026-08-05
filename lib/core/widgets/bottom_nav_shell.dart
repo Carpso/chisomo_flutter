@@ -42,24 +42,28 @@ class _BottomNavShellState extends State<BottomNavShell> {
   @override
   Widget build(BuildContext context) {
     _syncIndex();
+    final loc = GoRouterState.of(context).matchedLocation;
+    final showNav = _tabs.any((tab) => loc == tab.path);
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          if (index == _currentIndex) return;
-          _currentIndex = index;
-          context.go(_tabs[index].path);
-        },
-        destinations: [
-          for (final tab in _tabs)
-            NavigationDestination(
-              icon: Icon(tab.icon),
-              selectedIcon: Icon(tab.icon),
-              label: tab.label,
-            ),
-        ],
-      ),
+      bottomNavigationBar: showNav
+          ? NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (index) {
+                if (index == _currentIndex) return;
+                _currentIndex = index;
+                context.go(_tabs[index].path);
+              },
+              destinations: [
+                for (final tab in _tabs)
+                  NavigationDestination(
+                    icon: Icon(tab.icon),
+                    selectedIcon: Icon(tab.icon),
+                    label: tab.label,
+                  ),
+              ],
+            )
+          : null,
     );
   }
 }
