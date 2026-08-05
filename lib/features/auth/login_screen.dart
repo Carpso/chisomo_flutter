@@ -142,9 +142,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         width: 140,
                         height: 140,
                         alignment: Alignment.center,
-                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: AppColors.primary,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
@@ -154,9 +152,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ],
                         ),
-                        child: Image.asset(
-                          'assets/kingdom_sponsor_logo.png',
-                          fit: BoxFit.contain,
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/kingdom_sponsor_app_icon.jpg',
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                Icon(Icons.auto_awesome, size: 48, color: AppColors.primary),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),

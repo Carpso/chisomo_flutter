@@ -86,12 +86,15 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
                 child: const Text('Cancel'),
               ),
-              FilledButton(
-                onPressed: saving ||
-                        subject.text.trim().isEmpty ||
-                        message.text.trim().isEmpty
-                    ? null
-                    : () async {
+              ListenableBuilder(
+                listenable: Listenable.merge([subject, message]),
+                builder: (context, _) {
+                  final ready = subject.text.trim().isNotEmpty &&
+                      message.text.trim().isNotEmpty;
+                  return FilledButton(
+                    onPressed: saving || !ready
+                        ? null
+                        : () async {
                         setDialogState(() => saving = true);
                         try {
                           await ref.read(apiClientProvider).createSupportTicket(
@@ -117,19 +120,21 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               const SnackBar(
-                                  content:
-                                      Text('Could not send the request. Try again.')),
+                                      content:
+                                          Text('Could not send the request. Try again.')),
                             );
                           }
                         }
                       },
-                child: saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send'),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send'),
+                  );
+                },
               ),
             ],
           ),
@@ -166,8 +171,12 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
                 child: const Text('Cancel'),
               ),
-              FilledButton(
-                onPressed: saving || text.text.trim().isEmpty
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: text,
+                builder: (context, _, __) {
+                  final ready = text.text.trim().isNotEmpty;
+                  return FilledButton(
+                onPressed: saving || !ready
                     ? null
                     : () async {
                         setDialogState(() => saving = true);
@@ -196,13 +205,15 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                           }
                         }
                       },
-                child: saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send'),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send'),
+                  );
+                },
               ),
             ],
           ),
@@ -253,16 +264,42 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       Card(
-                        child: ListTile(
-                          leading: const Icon(LucideIcons.headphones,
-                              color: AppColors.primary),
-                          title: const Text('Need help?'),
-                          subtitle: const Text(
-                              'Send a message to the admin and we will reply here and by SMS.'),
-                          trailing: FilledButton.icon(
-                            onPressed: _compose,
-                            icon: const Icon(LucideIcons.plus, size: 16),
-                            label: const Text('New request'),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 2),
+                                child: Icon(LucideIcons.headphones,
+                                    color: AppColors.primary),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Need help?',
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Send a message to the admin and we will reply here and by SMS.',
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(color: AppColors.textMuted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              FilledButton.icon(
+                                onPressed: _compose,
+                                icon: const Icon(LucideIcons.plus, size: 16),
+                                label: const Text('New request'),
+                              ),
+                            ],
                           ),
                         ),
                       ),

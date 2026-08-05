@@ -124,7 +124,32 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                                 version: QrVersions.auto,
                                 size: 160,
                                 backgroundColor: Colors.white,
+                                embeddedImage: const AssetImage(
+                                    'assets/kingdom_sponsor_app_icon.jpg'),
+                                embeddedImageStyle: QrEmbeddedImageStyle(
+                                  size: const Size.square(40),
+                                ),
                               ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                ClipOval(
+                                  child: Image.asset(
+                                    'assets/kingdom_sponsor_app_icon.jpg',
+                                    width: 18,
+                                    height: 18,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Kingdom Sponsor',
+                                  style: theme.textTheme.labelMedium
+                                      ?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 8),
                             Text(
                               'Share your code so friends get you on Kingdom Sponsor — '

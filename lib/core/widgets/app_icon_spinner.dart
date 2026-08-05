@@ -28,8 +28,8 @@ class AppIconSpinner extends StatelessWidget {
             width: size * 0.55,
             height: size * 0.55,
             child: Image.asset(
-              'assets/kingdom_sponsor_logo.png',
-              fit: BoxFit.contain,
+              'assets/kingdom_sponsor_app_icon.jpg',
+              fit: BoxFit.cover,
               errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, size: 20),
             ),
           ),

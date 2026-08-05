@@ -15,6 +15,7 @@ import '../auth/auth_controller.dart';
 import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
+import 'dart:math' as math;
 
 class HostDashboardScreen extends ConsumerWidget {
   const HostDashboardScreen({super.key});
@@ -696,7 +697,7 @@ class _HostCampaignCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final available = campaign.availableCents ?? 0;
+    final available = math.max(0, campaign.availableCents ?? 0);
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
 
     return Card(

@@ -41,8 +41,7 @@ flutter:
 
   assets:
     - .env
-    - assets/Kingdom Sponsor.jpg
-    - assets/kingdom_sponsor_logo.png
+    - assets/kingdom_sponsor_app_icon.jpg
 
 # App-icon generation from the dedicated icon file. See assets/kingdom_sponsor_app_icon.jpg.
 flutter_launcher_icons:

@@ -147,8 +147,8 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
                         ),
                         padding: const EdgeInsets.all(3),
                         child: Image.asset(
-                          'assets/kingdom_sponsor_logo.png',
-                          fit: BoxFit.contain,
+                          'assets/kingdom_sponsor_app_icon.jpg',
+                          fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, size: 24),
                         ),
                       ),

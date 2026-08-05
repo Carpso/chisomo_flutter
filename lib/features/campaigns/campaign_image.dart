@@ -36,10 +36,10 @@ class CampaignImage extends StatelessWidget {
   }
 
   Widget _appIcon() => Image.asset(
-        'assets/kingdom_sponsor_logo.png',
+        'assets/kingdom_sponsor_app_icon.jpg',
         width: width,
         height: height,
-        fit: BoxFit.contain,
+        fit: BoxFit.cover,
         errorBuilder: (_, _, _) => const Icon(Icons.auto_awesome, size: 28),
       );
 }

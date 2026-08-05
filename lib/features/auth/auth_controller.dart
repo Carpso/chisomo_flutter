@@ -41,7 +41,7 @@ class AuthState {
 
 class AuthController extends AsyncNotifier<AuthState> {
   static const _storage = FlutterSecureStorage();
-  static const tokenStorageKey = 'kingdom_sponsor_token';
+  static const tokenStorageKey = ApiClient.tokenStorageKey;
 
   @override
   Future<AuthState> build() async {

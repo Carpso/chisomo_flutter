@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -20,6 +21,9 @@ class ApiClient {
 
   final http.Client _client;
   String? token;
+
+  /// Secure-storage key where the session token is persisted.
+  static const tokenStorageKey = 'kingdom_sponsor_token';
 
   String get _baseUrl => dotenv.env['API_URL'] ?? 'http://10.0.2.2:8787';
 
@@ -298,9 +302,18 @@ class ApiClient {
 
   /// Runs a request with a timeout and surfaces network failures as [ApiException]
   /// so the UI can show a clear message instead of hanging or silently failing.
+  /// Also picks up sliding-session refresh tokens issued by the server.
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
-      return await request().timeout(const Duration(seconds: 20));
+      final res = await request().timeout(const Duration(seconds: 20));
+      final fresh = res.headers['x-refresh-token'];
+      if (fresh != null && fresh.isNotEmpty && fresh != token) {
+        token = fresh;
+        await FlutterSecureStorage()
+            .write(key: tokenStorageKey, value: fresh)
+            .catchError((_) {});
+      }
+      return res;
     } on ApiException {
       rethrow;
     } catch (e) {
