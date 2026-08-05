@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/api_client.dart';
+import '../../core/session_store.dart';
 import '../campaigns/campaigns_controller.dart';
 
 class AuthState {
@@ -40,30 +40,46 @@ class AuthState {
 }
 
 class AuthController extends AsyncNotifier<AuthState> {
-  static const _storage = FlutterSecureStorage();
   static const tokenStorageKey = ApiClient.tokenStorageKey;
 
   @override
   Future<AuthState> build() async {
-    final token = await _storage.read(key: tokenStorageKey);
+    final token = await SessionStore.read();
     final api = ref.read(apiClientProvider);
     api.token = token;
     if (token == null) return const AuthState();
-    try {
-      final me = await api.get('/api/host/me', auth: true);
-      return AuthState(
-        token: token,
-        phone: me['user']?['phone'] as String?,
-        username: me['user']?['username'] as String?,
-        name: me['user']?['name'] as String?,
-        avatarUrl: me['user']?['avatarUrl'] as String?,
-        isHost: me['user']?['isHost'] == true,
-        isAdmin: me['user']?['isAdmin'] == true,
-        hostStatus: me['user']?['hostStatus'] as String? ?? 'none',
-      );
-    } catch (_) {
-      return const AuthState();
+
+    Map<String, dynamic>? me;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        me = await api.get('/api/host/me', auth: true);
+        break;
+      } on ApiException catch (e) {
+        if (e.statusCode == 401) {
+          // Token is no longer valid: clear it and sign out for real.
+          await SessionStore.delete();
+          api.token = null;
+          return const AuthState();
+        }
+      } catch (_) {}
+      if (attempt < 2) await Future.delayed(const Duration(seconds: 2));
     }
+
+    // Transient failure (server briefly unreachable, e.g. right after an app
+    // update): keep the session instead of logging the user out.
+    final user = me?['user'];
+    if (user == null) return AuthState(token: token);
+
+    return AuthState(
+      token: token,
+      phone: user['phone'] as String?,
+      username: user['username'] as String?,
+      name: user['name'] as String?,
+      avatarUrl: user['avatarUrl'] as String?,
+      isHost: user['isHost'] == true,
+      isAdmin: user['isAdmin'] == true,
+      hostStatus: user['hostStatus'] as String? ?? 'none',
+    );
   }
 
   /// Forget every cached provider so screens reload for the new account
@@ -96,7 +112,7 @@ class AuthController extends AsyncNotifier<AuthState> {
       });
       final token = res['token'] as String;
       api.token = token;
-      await _storage.write(key: tokenStorageKey, value: token);
+      await SessionStore.write(token);
       state = AsyncValue.data(AuthState(
         token: token,
         phone: res['user']?['phone'] as String?,
@@ -115,7 +131,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    await _storage.delete(key: tokenStorageKey);
+    await SessionStore.delete();
     ref.read(apiClientProvider).token = null;
     state = const AsyncValue.data(AuthState());
     _resetData();

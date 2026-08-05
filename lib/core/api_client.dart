@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+
+import 'session_store.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
@@ -22,8 +23,8 @@ class ApiClient {
   final http.Client _client;
   String? token;
 
-  /// Secure-storage key where the session token is persisted.
-  static const tokenStorageKey = 'kingdom_sponsor_token';
+  /// Storage key where the session token is persisted (encrypted + fallback).
+  static const tokenStorageKey = SessionStore.key;
 
   String get _baseUrl => dotenv.env['API_URL'] ?? 'http://10.0.2.2:8787';
 
@@ -309,9 +310,7 @@ class ApiClient {
       final fresh = res.headers['x-refresh-token'];
       if (fresh != null && fresh.isNotEmpty && fresh != token) {
         token = fresh;
-        await FlutterSecureStorage()
-            .write(key: tokenStorageKey, value: fresh)
-            .catchError((_) {});
+        await SessionStore.write(fresh);
       }
       return res;
     } on ApiException {

@@ -4,13 +4,12 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'core/api_client.dart';
 import 'core/router.dart';
+import 'core/session_store.dart';
 import 'core/theme.dart';
-import 'features/auth/auth_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,8 +60,7 @@ Future<void> _setupFCM() async {
 /// (a fresh ApiClient has no auth token, so the server would reject it and
 /// donors would never receive campaign-update pushes).
 Future<void> _registerToken(String token) async {
-  final session =
-      await const FlutterSecureStorage().read(key: AuthController.tokenStorageKey);
+  final session = await SessionStore.read();
   if (session == null) return;
   final api = ApiClient()..token = session;
   await api
