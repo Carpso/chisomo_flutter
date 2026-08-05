@@ -77,6 +77,15 @@ class AdminScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: () => context.push('/admin/campaigns'),
+                icon: const Icon(LucideIcons.tent, size: 18),
+                label: const Text('Campaigns'),
+              ),
               const SizedBox(height: 20),
               _ApplicationsSection(applications: data.applications),
               const SizedBox(height: 20),

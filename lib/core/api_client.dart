@@ -233,9 +233,16 @@ class ApiClient {
     return post('/api/admin/delete-requests/$id/reject', {}, auth: true);
   }
 
-  /// Admin: delete a campaign directly.
-  Future<Map<String, dynamic>> deleteCampaign(int campaignId) {
-    return post('/api/admin/campaigns/$campaignId/delete', {}, auth: true);
+  /// Admin: delete a campaign directly (host and donors are alerted).
+  Future<Map<String, dynamic>> deleteCampaign(int campaignId, {String reason = ''}) {
+    return post('/api/admin/campaigns/$campaignId/delete',
+        {'reason': reason}, auth: true);
+  }
+
+  /// Admin: all campaigns (any status) with host and balance info.
+  Future<List<dynamic>> getAdminCampaigns() async {
+    final res = await get('/api/admin/campaigns', auth: true);
+    return res['campaigns'] as List<dynamic>? ?? [];
   }
 
   /// Submits a support ticket to the superadmin.

@@ -15,6 +15,7 @@ import '../features/support/support_screen.dart';
 import '../features/host/create_campaign_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
 import '../features/host/promote_screen.dart';
+import '../features/admin/admin_campaigns_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/admin/admin_ledger_screen.dart';
 import '../features/admin/transaction_detail_screen.dart';
@@ -143,6 +144,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return const AdminDisbursementsScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/campaigns',
+            builder: (context, state) {
+              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              return const AdminCampaignsScreen();
             },
           ),
         ],
