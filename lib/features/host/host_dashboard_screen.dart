@@ -775,12 +775,55 @@ class _HostCampaignCard extends ConsumerWidget {
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Available: ${formatKwacha(available)}',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: AppColors.primary,
-              ),
+            Row(
+              children: [
+                Text(
+                  'Available: ${formatKwacha(available)}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => showModalBottomSheet(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (ctx) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'How Available is calculated',
+                              style: Theme.of(ctx)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Available = confirmed donations minus the platform fee (1%, minimum K3) minus the mobile money fee (2.5%) minus anything already paid out.\n\n'
+                              'Example: a K50 donation gives K50.00 - K3.00 platform fee - K1.25 mobile money = K45.75 available. Withdraw when the balance reaches the minimum shown below.',
+                              style: Theme.of(ctx)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: const Icon(
+                    LucideIcons.info,
+                    size: 16,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Wrap(

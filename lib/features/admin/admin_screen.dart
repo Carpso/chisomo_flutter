@@ -1089,6 +1089,8 @@ class _StatGrid extends StatelessWidget {
           value: formatKwacha(stats.totalRaisedCents),
           color: AppColors.primary,
           onTap: () => context.push('/admin/transactions'),
+          info:
+              'Sum of all confirmed donations, before fees. Platform fee (1%, min K3) and mobile money fee (2.5%) are removed before the host\u2019s available balance is calculated.',
         ),
         _StatCard(
           icon: LucideIcons.tent,
@@ -1101,18 +1103,33 @@ class _StatGrid extends StatelessWidget {
             ('New (7 days)', '${stats.newCampaigns7d}'),
             ('New (30 days)', '${stats.newCampaigns30d}'),
           ]),
+          info: 'Fundraisers currently open for donations. Tap for all-time and new counts.',
         ),
         _StatCard(
           icon: LucideIcons.users,
           label: 'Donors',
           value: '${stats.donors}',
           color: AppColors.gold,
-          onTap: () => _showBreakdown(context, 'Donors & users', [
+          onTap: () => _showBreakdown(context, 'Donors', [
             ('Distinct donors', '${stats.donors}'),
-            ('Total users', '${stats.usersTotal}'),
-            ('New users (7 days)', '${stats.newUsers7d}'),
-            ('New users (30 days)', '${stats.newUsers30d}'),
           ]),
+          info:
+              'Distinct people who completed at least one donation. One person giving many times counts once.',
+        ),
+        _StatCard(
+          icon: LucideIcons.userPlus,
+          label: 'Users',
+          value: '${stats.usersTotal}',
+          color: AppColors.gold,
+          onTap: () => _showBreakdown(context, 'Users', [
+            ('Total users', '${stats.usersTotal}'),
+            ('Approved hosts', '${stats.hostsTotal}'),
+            ('Distinct donors', '${stats.donors}'),
+            ('New (7 days)', '${stats.newUsers7d}'),
+            ('New (30 days)', '${stats.newUsers30d}'),
+          ]),
+          info:
+              'Every phone number that verified with an SMS code. A host is a user approved to run fundraisers.',
         ),
         _StatCard(
           icon: LucideIcons.coins,
@@ -1120,6 +1137,8 @@ class _StatGrid extends StatelessWidget {
           value: formatKwacha(stats.platformFeesCents),
           color: AppColors.primary,
           onTap: () => context.push('/admin/disbursements'),
+          info:
+              'Earned fees: 1% (minimum K3) of every confirmed donation, plus 1% (minimum K3) of every host payout. The full breakdown lives under Disbursements.',
         ),
         _StatCard(
           icon: LucideIcons.trendingUp,
@@ -1132,6 +1151,7 @@ class _StatGrid extends StatelessWidget {
             ('Donations (30 days)', '${stats.newDonations30d}'),
             ('Donations (all time)', '${stats.donationsTotal}'),
           ]),
+          info: 'Average amount raised per day since the first campaign was created.',
         ),
         _StatCard(
           icon: LucideIcons.hourglass,
@@ -1141,6 +1161,7 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Host applications', [
             ('Waiting for approval', '${stats.pendingApplications}'),
           ]),
+          info: 'Host applications waiting for your approval. Tap to review them.',
         ),
         _StatCard(
           icon: LucideIcons.fileText,
@@ -1151,6 +1172,7 @@ class _StatGrid extends StatelessWidget {
             ('All time', '${stats.receiptsDownloaded}'),
             ('Last 7 days', '${stats.receiptsDownloaded7d}'),
           ]),
+          info: 'How many times donors downloaded a donation receipt (PDF).',
         ),
         _StatCard(
           icon: LucideIcons.calendarClock,
@@ -1160,6 +1182,8 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Recurring pledges', [
             ('Donors on monthly reminders', '${stats.activePledges}'),
           ]),
+          info:
+              'Donors who opted for a monthly reminder: they get an SMS on the same day each month to give again.',
         ),
         _StatCard(
           icon: LucideIcons.messageCircle,
@@ -1169,6 +1193,7 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Support', [
             ('Waiting for a reply', '${stats.openTickets}'),
           ]),
+          info: 'Support messages from users that still need a reply.',
         ),
         _StatCard(
           icon: LucideIcons.trash2,
@@ -1180,6 +1205,7 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Campaign deletion', [
             ('Pending approval', '${stats.pendingDeleteRequests}'),
           ]),
+          info: 'Hosts who asked to remove their campaign, waiting for your approval.',
         ),
       ],
     );
@@ -1192,6 +1218,7 @@ class _StatCard extends StatelessWidget {
   final String value;
   final Color color;
   final VoidCallback? onTap;
+  final String? info;
 
   const _StatCard({
     required this.icon,
@@ -1199,7 +1226,42 @@ class _StatCard extends StatelessWidget {
     required this.value,
     required this.color,
     this.onTap,
+    this.info,
   });
+
+  void _showExplanation(BuildContext context) {
+    final text = info;
+    if (text == null) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 18, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(text, style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1217,7 +1279,24 @@ class _StatCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 20, color: color),
+            Row(
+              children: [
+                Icon(icon, size: 20, color: color),
+                const Spacer(),
+                if (info != null)
+                  GestureDetector(
+                    onTap: () => _showExplanation(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: AppColors.textMuted.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(LucideIcons.info, size: 12, color: AppColors.textMuted),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 6),
             Text(
               value,

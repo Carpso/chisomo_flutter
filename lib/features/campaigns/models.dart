@@ -508,6 +508,7 @@ class AdminStats {
   final int pendingApplications;
   final int dailyRateCents;
   final int usersTotal;
+  final int hostsTotal;
   final int newUsers7d;
   final int newUsers30d;
   final int campaignsTotal;
@@ -531,6 +532,7 @@ class AdminStats {
     required this.pendingApplications,
     required this.dailyRateCents,
     required this.usersTotal,
+    required this.hostsTotal,
     required this.newUsers7d,
     required this.newUsers30d,
     required this.campaignsTotal,
@@ -555,6 +557,7 @@ class AdminStats {
         pendingApplications: j['pendingApplications'] as int? ?? 0,
         dailyRateCents: j['dailyRateCents'] as int? ?? 0,
         usersTotal: j['usersTotal'] as int? ?? 0,
+        hostsTotal: j['hostsTotal'] as int? ?? 0,
         newUsers7d: j['newUsers7d'] as int? ?? 0,
         newUsers30d: j['newUsers30d'] as int? ?? 0,
         campaignsTotal: j['campaignsTotal'] as int? ?? 0,
