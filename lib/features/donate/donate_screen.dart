@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -225,6 +226,11 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         ),
         if (_selectedPreset == 0) ...[
           const SizedBox(height: 12),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _amountController,
+            builder: (context, _, _) =>
+                _buildFeeBreakdown(context, detail?.fees),
+          ),
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
@@ -234,6 +240,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             ),
           ),
         ],
+        if (_selectedPreset > 0) _buildFeeBreakdown(context, detail?.fees),
         const SizedBox(height: 20),
         TextField(
           controller: _nameController,
@@ -324,6 +331,38 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         const SizedBox(height: 8),
         _buildFeeNote(context, detail?.fees),
       ],
+    );
+  }
+
+  Widget _buildFeeBreakdown(BuildContext context, FeesInfo? fees) {
+    final theme = Theme.of(context);
+    final amountCents = _amountCents;
+    if (fees == null || amountCents < 100) return const SizedBox.shrink();
+    final platform =
+        math.max(fees.platformMinFeeCents, (amountCents * fees.platformPct / 100).round());
+    final momo = (amountCents * fees.momoPct / 100).round();
+    final total = amountCents + platform + momo;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'You will pay ${formatKwacha(total)}',
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${formatKwacha(amountCents)} donation + ${formatKwacha(platform)} platform fee + ${formatKwacha(momo)} mobile money',
+            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 
