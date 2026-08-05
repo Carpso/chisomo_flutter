@@ -11,7 +11,7 @@ class Country {
 }
 
 const kPhoneCountries = <Country>[
-  Country(flag: '🇿🇲', code: '+260', nationalLength: 9), // Zambia (default)
+  Country(flag: '🇿🇲', code: '+260', nationalLength: 9),
   Country(flag: '🇰🇪', code: '+254', nationalLength: 9),
   Country(flag: '🇹🇿', code: '+255', nationalLength: 9),
   Country(flag: '🇺🇬', code: '+256', nationalLength: 9),
@@ -26,8 +26,43 @@ const kPhoneCountries = <Country>[
   Country(flag: '🇿🇦', code: '+27', nationalLength: 9),
 ];
 
-/// Smart mobile number field: country code picker (defaults to Zambia),
-/// auto-detects pasted international numbers, keeps the national part formatted.
+class _PhoneFormatter extends TextInputFormatter {
+  final int nationalLength;
+
+  const _PhoneFormatter(this.nationalLength);
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    var digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.startsWith('00')) {
+      digits = digits.substring(2);
+    }
+    if (digits.length > 11 && digits.startsWith('260')) {
+      digits = digits.substring(3);
+    }
+    if (digits.startsWith('0')) {
+      digits = digits.substring(1);
+    }
+    if (digits.length > nationalLength) {
+      digits = digits.substring(0, nationalLength);
+    }
+    final formatted = _group('0$digits');
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+
+  String _group(String digits) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && i % 3 == 0) buffer.write(' ');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+}
+
 class PhoneField extends StatefulWidget {
   const PhoneField({
     super.key,
@@ -37,7 +72,6 @@ class PhoneField extends StatefulWidget {
     this.helperText,
   });
 
-  /// Optional existing number (national or E.164).
   final String? initialValue;
   final ValueChanged<String>? onChanged;
   final String labelText;
@@ -85,7 +119,7 @@ class _PhoneFieldState extends State<PhoneField> {
   }
 
   void _handleChanged(String raw) {
-    var digits = raw.replaceAll(RegExp(r'\D'), '');
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) {
       widget.onChanged?.call('');
       return;
@@ -93,7 +127,6 @@ class _PhoneFieldState extends State<PhoneField> {
 
     final sorted = [...kPhoneCountries]..sort((a, b) => b.code.length - a.code.length);
 
-    // Pasted full international number ("00260968..." or "+260968...").
     final isInternational = digits.startsWith('00') || digits.startsWith('+') ||
         (digits.length > 11 && digits.startsWith('260'));
     if (isInternational) {
@@ -103,32 +136,13 @@ class _PhoneFieldState extends State<PhoneField> {
       for (final c in sorted) {
         if (probe.startsWith(c.code)) {
           setState(() => _country = c);
-          _controller.text = probe.substring(c.code.length);
           widget.onChanged?.call(e164);
           return;
         }
       }
     }
 
-    // Plain national digits.
-    final national = digits.startsWith('0') ? digits.substring(1) : digits;
-    final limited =
-        national.length > _country.nationalLength ? national.substring(0, _country.nationalLength) : national;
-    final formatted = _group('0$limited');
-    if (formatted != _controller.text) {
-      _controller.text = formatted;
-      _controller.selection = TextSelection.collapsed(offset: formatted.length);
-    }
     widget.onChanged?.call(e164);
-  }
-
-  String _group(String digits) {
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && i % 3 == 0) buffer.write(' ');
-      buffer.write(digits[i]);
-    }
-    return buffer.toString();
   }
 
   @override
@@ -137,9 +151,8 @@ class _PhoneFieldState extends State<PhoneField> {
       controller: _controller,
       keyboardType: TextInputType.phone,
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9+ ]')),
+        _PhoneFormatter(_country.nationalLength),
       ],
-      maxLength: _country.nationalLength + 1,
       onChanged: _handleChanged,
       decoration: InputDecoration(
         labelText: widget.labelText,

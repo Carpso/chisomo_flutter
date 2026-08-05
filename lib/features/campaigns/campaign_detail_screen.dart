@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/avatar.dart';
 import '../../core/widgets/countdown_banner.dart';
 import 'campaigns_controller.dart';
+import 'campaign_image.dart';
 import 'models.dart';
 import 'share_sheet.dart';
 
@@ -34,8 +38,8 @@ class CampaignDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: detail.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+       body: detail.when(
+         loading: () => const Center(child: AppIconSpinner()),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -116,8 +120,9 @@ class _DetailBody extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
+              // Cover photos fill the banner edge-to-edge; logos stay centered.
               Container(
-                height: 160,
+                height: 200,
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -127,17 +132,15 @@ class _DetailBody extends ConsumerWidget {
                   ),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: c.logoUrl != null
-                    ? Image.network(
-                        c.logoUrl!,
-                        width: double.infinity,
-                        height: 160,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) =>
-                            const Icon(LucideIcons.tent, size: 56, color: Colors.white),
+                child: c.imageUrl != null
+                    ? SizedBox.expand(
+                        child: CampaignImage(campaign: c, fit: BoxFit.cover),
                       )
-                    : const Center(
-                        child: Icon(LucideIcons.tent, size: 56, color: Colors.white),
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: CampaignImage(campaign: c, fit: BoxFit.contain),
+                        ),
                       ),
               ),
               const SizedBox(height: 18),
@@ -244,7 +247,7 @@ class _DetailBody extends ConsumerWidget {
                       ],
                       const SizedBox(height: 4),
                       Text(
-                        '${c.donorCount} ${c.donorCount == 1 ? 'donation' : 'donations'}',
+                        '${c.donationCount} ${c.donationCount == 1 ? 'donation' : 'donations'}',
                         style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                       ),
                       const SizedBox(height: 10),
@@ -324,6 +327,8 @@ class _DetailBody extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 20),
+              _AnnouncementsSection(campaignId: c.id),
+              const SizedBox(height: 20),
               Text(
                 'Recent donors',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -344,15 +349,10 @@ class _DetailBody extends ConsumerWidget {
                       for (final donor in detail.donors)
                         ListTile(
                           dense: true,
-                          leading: CircleAvatar(
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                            child: Text(
-                              donor.username.substring(0, 1),
-                              style: const TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                          leading: Avatar(
+                            url: donor.avatarUrl,
+                            name: donor.username,
+                            radius: 16,
                           ),
                           title: Row(
                             children: [
@@ -383,11 +383,7 @@ class _DetailBody extends ConsumerWidget {
                               ],
                             ],
                           ),
-                          subtitle: Text(
-                            donor.amountHidden
-                                ? '${donor.date} • contribution hidden'
-                                : donor.date,
-                          ),
+                          subtitle: Text(donor.summary),
                           trailing: donor.amountHidden
                               ? const Icon(LucideIcons.eyeOff,
                                   size: 18, color: AppColors.textMuted)
@@ -435,6 +431,69 @@ class _DetailBody extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AnnouncementsSection extends ConsumerStatefulWidget {
+  final int campaignId;
+
+  const _AnnouncementsSection({required this.campaignId});
+
+  @override
+  ConsumerState<_AnnouncementsSection> createState() => _AnnouncementsSectionState();
+}
+
+class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
+  late final Future<List<dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(apiClientProvider).getAnnouncements(widget.campaignId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FutureBuilder<List<dynamic>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final items = snapshot.data ?? const [];
+        if (snapshot.hasData && items.isEmpty) return const SizedBox.shrink();
+        if (snapshot.connectionState == ConnectionState.waiting && items.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Updates from the host',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                children: [
+                  for (final a in items)
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(LucideIcons.megaphone, size: 20, color: AppColors.primary),
+                      title: Text(
+                        a['body'] as String? ?? '',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        '${a['author'] ?? 'Host'} · ${(a['createdAt'] as String? ?? '').replaceFirst(' ', ' · ')}',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

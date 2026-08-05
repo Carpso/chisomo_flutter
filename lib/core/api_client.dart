@@ -26,6 +26,13 @@ class ApiClient {
   /// Public, QR/WhatsApp-friendly share page for a campaign.
   String shareUrl(int campaignId) => '$_baseUrl/share/$campaignId';
 
+  /// Deep link that opens this campaign directly in the installed app.
+  String deepLink(int campaignId) => 'kingdomsponsor://campaign/$campaignId';
+
+  /// Play Store page for people who do not have the app installed.
+  static const playStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.kingdomsponsor.app';
+
   Map<String, String> _headers({bool auth = false}) => {
         'Content-Type': 'application/json',
         if (auth && token != null) 'Authorization': 'Bearer $token',
@@ -50,6 +57,51 @@ class ApiClient {
     final res = await _send(() =>
         _client.delete(Uri.parse('$_baseUrl$path'), headers: _headers(auth: auth)));
     return _decode(res);
+  }
+
+  /// Sends a link request to another account (family | couple | team).
+  Future<Map<String, dynamic>> linkUser(String targetPhone, String linkType) {
+    return post('/api/user/link', {'targetPhone': targetPhone, 'linkType': linkType},
+        auth: true);
+  }
+
+  /// Accepts a pending account link request sent to me.
+  Future<Map<String, dynamic>> acceptLink(int linkId) {
+    return post('/api/user/links/$linkId/accept', {}, auth: true);
+  }
+
+  /// Rejects a pending account link request sent to me.
+  Future<Map<String, dynamic>> rejectLink(int linkId) {
+    return post('/api/user/links/$linkId/reject', {}, auth: true);
+  }
+
+  /// Lists my account links (outgoing and incoming).
+  Future<Map<String, dynamic>> getLinks() {
+    return get('/api/user/links', auth: true);
+  }
+
+  /// Updates the signed-in user's display name and/or username.
+  Future<Map<String, dynamic>> updateProfile({String? name, String? username}) {
+    return post('/api/me', {
+      if (name != null) 'name': name,
+      if (username != null) 'username': username,
+    }, auth: true);
+  }
+
+  /// Permanently deletes the signed-in account (Google Play compliance).
+  Future<Map<String, dynamic>> deleteAccount() {
+    return delete('/api/account', auth: true);
+  }
+
+  /// Lists host announcements for a campaign (public).
+  Future<List<dynamic>> getAnnouncements(int campaignId) async {
+    final res = await get('/api/campaigns/$campaignId/announcements');
+    return res['announcements'] as List<dynamic>? ?? [];
+  }
+
+  /// Posts a host announcement to a campaign.
+  Future<Map<String, dynamic>> postAnnouncement(int campaignId, String body) {
+    return post('/api/campaigns/$campaignId/announcements', {'body': body}, auth: true);
   }
 
   /// Sets up (or updates) a monthly reminder pledge on a campaign.
@@ -107,6 +159,112 @@ class ApiClient {
     final res = await _send(() =>
         req.send().then((s) => http.Response.fromStream(s)));
     return _decode(res);
+  }
+
+  /// Uploads the signed-in user's profile photo (multipart).
+  Future<Map<String, dynamic>> uploadAvatar(List<int> bytes, String filename) async {
+    final ext = filename.split('.').last.toLowerCase();
+    final mime = switch (ext) {
+      'png' => MediaType('image', 'png'),
+      'webp' => MediaType('image', 'webp'),
+      _ => MediaType('image', 'jpeg'),
+    };
+    final req = http.MultipartRequest(
+        'POST', Uri.parse('$_baseUrl/api/me/avatar'))
+      ..headers['Authorization'] = 'Bearer $token'
+      ..files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mime));
+    final res = await _send(() =>
+        req.send().then((s) => http.Response.fromStream(s)));
+    return _decode(res);
+  }
+
+  /// Admin: approve a paid promotion (goes live in the top-5 list).
+  Future<Map<String, dynamic>> approvePromotion(int id) {
+    return post('/api/admin/promotions/$id/approve', {}, auth: true);
+  }
+
+  /// Admin: reject a paid promotion (host is notified).
+  Future<Map<String, dynamic>> rejectPromotion(int id) {
+    return post('/api/admin/promotions/$id/reject', {}, auth: true);
+  }
+
+  /// Host: this account's own promotion purchases/history.
+  Future<Map<String, dynamic>> getMyPromotions() {
+    return get('/api/me/promotions', auth: true);
+  }
+
+  /// Admin: current promotion paywall settings.
+  Future<Map<String, dynamic>> getPromotionConfig() {
+    return get('/api/admin/promotion-config', auth: true);
+  }
+
+  /// Admin: set the promotion price (cents) and duration (days).
+  Future<Map<String, dynamic>> setPromotionConfig(int priceCents, int days) {
+    return post('/api/admin/promotion-config',
+        {'priceCents': priceCents, 'days': days}, auth: true);
+  }
+
+  /// Host: request the admin to delete a campaign.
+  Future<Map<String, dynamic>> requestCampaignDelete(int campaignId,
+      {String reason = ''}) {
+    return post('/api/campaigns/$campaignId/delete-request',
+        {'reason': reason}, auth: true);
+  }
+
+  /// Admin: pending campaign-delete requests.
+  Future<List<dynamic>> getDeleteRequests() async {
+    final res = await get('/api/admin/delete-requests', auth: true);
+    return res['requests'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: approve a campaign-delete request (campaign removed).
+  Future<Map<String, dynamic>> approveDeleteRequest(int id) {
+    return post('/api/admin/delete-requests/$id/approve', {}, auth: true);
+  }
+
+  /// Admin: reject a campaign-delete request.
+  Future<Map<String, dynamic>> rejectDeleteRequest(int id) {
+    return post('/api/admin/delete-requests/$id/reject', {}, auth: true);
+  }
+
+  /// Admin: delete a campaign directly.
+  Future<Map<String, dynamic>> deleteCampaign(int campaignId) {
+    return post('/api/admin/campaigns/$campaignId/delete', {}, auth: true);
+  }
+
+  /// Submits a support ticket to the superadmin.
+  Future<Map<String, dynamic>> createSupportTicket(String subject, String message) {
+    return post('/api/support/tickets',
+        {'subject': subject, 'message': message}, auth: true);
+  }
+
+  /// Lists my support tickets.
+  Future<List<dynamic>> getSupportTickets() async {
+    final res = await get('/api/support/tickets', auth: true);
+    return res['tickets'] as List<dynamic>? ?? [];
+  }
+
+  /// Replies to a support ticket (user or admin).
+  Future<Map<String, dynamic>> replySupportTicket(int id, String message) {
+    return post('/api/support/tickets/$id/reply', {'message': message}, auth: true);
+  }
+
+  /// Admin: all support tickets (optionally filtered by status).
+  Future<List<dynamic>> getAdminTickets({String status = ''}) async {
+    final res = await get('/api/admin/tickets?status=$status', auth: true);
+    return res['tickets'] as List<dynamic>? ?? [];
+  }
+
+  /// Donor: this account's confirmed contributions (for receipts).
+  Future<List<dynamic>> getMyReceipts() async {
+    final res = await get('/api/me/receipts', auth: true);
+    return res['receipts'] as List<dynamic>? ?? [];
+  }
+
+  /// Checks the Lipila collection status for a contribution.
+  Future<Map<String, dynamic>> checkContributionStatus(String referenceId) {
+    return get('/api/contributions/status/$referenceId');
   }
 
   /// Runs a request with a timeout and surfaces network failures as [ApiException]

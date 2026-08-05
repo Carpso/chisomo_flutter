@@ -12,6 +12,7 @@ class Campaign {
   final int raisedCents;
   final int withdrawnCents;
   final int donorCount;
+  final int donationCount;
   final int avgDonationCents;
   final int? donorsNeededAtAvg;
   final int dailyRateCents;
@@ -36,6 +37,7 @@ class Campaign {
     required this.raisedCents,
     required this.withdrawnCents,
     required this.donorCount,
+    required this.donationCount,
     required this.avgDonationCents,
     required this.donorsNeededAtAvg,
     required this.dailyRateCents,
@@ -61,6 +63,7 @@ class Campaign {
         raisedCents: j['raisedCents'] as int? ?? 0,
         withdrawnCents: j['withdrawnCents'] as int? ?? 0,
         donorCount: j['donorCount'] as int? ?? 0,
+        donationCount: j['donationCount'] as int? ?? (j['donorCount'] as int? ?? 0),
         avgDonationCents: j['avgDonationCents'] as int? ?? 0,
         donorsNeededAtAvg: j['donorsNeededAtAvg'] as int?,
         dailyRateCents: j['dailyRateCents'] as int? ?? 0,
@@ -185,35 +188,111 @@ class AdminPromotion {
       );
 }
 
+/// A host's own promotion purchase history.
+class MyPromotion {
+  final int id;
+  final int campaignId;
+  final String campaignTitle;
+  final int amountCents;
+  final int days;
+  final String status;
+  final String? reference;
+  final String? expiresAt;
+  final String createdAt;
+
+  const MyPromotion({
+    required this.id,
+    required this.campaignId,
+    required this.campaignTitle,
+    required this.amountCents,
+    required this.days,
+    required this.status,
+    this.reference,
+    this.expiresAt,
+    required this.createdAt,
+  });
+
+  factory MyPromotion.fromJson(Map<String, dynamic> j) => MyPromotion(
+        id: j['id'] as int? ?? 0,
+        campaignId: j['campaignId'] as int? ?? 0,
+        campaignTitle: j['campaignTitle'] as String? ?? '',
+        amountCents: j['amountCents'] as int? ?? 0,
+        days: j['days'] as int? ?? 0,
+        status: j['status'] as String? ?? '',
+        reference: j['reference'] as String?,
+        expiresAt: j['expiresAt'] as String?,
+        createdAt: j['createdAt'] as String? ?? '',
+      );
+
+  String get statusLabel {
+    switch (status) {
+      case 'pending':
+        return 'Awaiting payment';
+      case 'pending_approval':
+        return 'Paid — awaiting approval';
+      case 'active':
+        return 'Live on top of the list';
+      case 'rejected':
+        return 'Rejected by admin';
+      case 'expired':
+        return 'Expired';
+      case 'refunded':
+        return 'Refunded';
+      default:
+        return status;
+    }
+  }
+}
+
 class Donor {
   final String username;
   final String? name;
+  final String? avatarUrl;
   final bool isAnonymous;
   final int? amountCents;
   final String? tier;
   final String date;
+  final int donationCount;
+  final int hiddenCount;
 
   const Donor({
     required this.username,
     required this.name,
+    this.avatarUrl,
     required this.isAnonymous,
     required this.amountCents,
     required this.tier,
     required this.date,
+    this.donationCount = 1,
+    this.hiddenCount = 0,
   });
 
   factory Donor.fromJson(Map<String, dynamic> j) => Donor(
         username: j['username'] as String? ?? 'Giver',
         name: j['name'] as String?,
+        avatarUrl: j['avatarUrl'] as String?,
         isAnonymous: j['isAnonymous'] as bool? ?? false,
         amountCents: j['amountCents'] as int?,
         tier: j['tier'] as String?,
         date: j['date'] as String? ?? '',
+        donationCount: j['donationCount'] as int? ?? 1,
+        hiddenCount: j['hiddenCount'] as int? ?? 0,
       );
 
   String get displayName => name ?? username;
 
   bool get amountHidden => amountCents == null;
+
+  /// Smart summary of the donor's (possibly merged) donations:
+  /// date, how many donations, and whether some amounts are hidden.
+  String get summary {
+    final parts = <String>[date];
+    if (donationCount > 1) parts.add('$donationCount donations');
+    if (hiddenCount > 0) {
+      parts.add(hiddenCount == donationCount ? 'amount hidden' : '$hiddenCount hidden');
+    }
+    return parts.join(' • ');
+  }
 }
 
 class LeaderboardEntry {
@@ -285,44 +364,63 @@ class CampaignDetail {
 
 class Transaction {
   final int id;
+  final int? campaignId;
   final String campaignTitle;
-  final String name;
+  final String? donorName;
+  final bool isAnonymous;
   final String phone;
   final int amountCents;
   final int platformFeeCents;
   final int lipilaFeeCents;
   final String status;
-  final String date;
+  final String? lipilaReference;
+  final String? lipilaIdentifier;
+  final String? confirmedAt;
+  final String createdAt;
 
   const Transaction({
     required this.id,
+    this.campaignId,
     required this.campaignTitle,
-    required this.name,
+    this.donorName,
+    this.isAnonymous = false,
     required this.phone,
     required this.amountCents,
     required this.platformFeeCents,
     required this.lipilaFeeCents,
     required this.status,
-    required this.date,
+    this.lipilaReference,
+    this.lipilaIdentifier,
+    this.confirmedAt,
+    required this.createdAt,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> j) => Transaction(
         id: j['id'] as int,
+        campaignId: j['campaignId'] as int?,
         campaignTitle: j['campaignTitle'] as String? ?? '',
-        name: j['name'] as String? ?? '',
+        donorName: j['donorName'] as String?,
+        isAnonymous: j['isAnonymous'] as bool? ?? false,
         phone: j['phone'] as String? ?? '',
         amountCents: j['amountCents'] as int? ?? 0,
         platformFeeCents: j['platformFeeCents'] as int? ?? 0,
         lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
         status: j['status'] as String? ?? '',
-        date: j['date'] as String? ?? '',
+        lipilaReference: j['lipilaReference'] as String?,
+        lipilaIdentifier: j['lipilaIdentifier'] as String?,
+        confirmedAt: j['confirmedAt'] as String?,
+        createdAt: j['createdAt'] as String? ?? '',
       );
+
+  String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? 'Giver');
 }
 
 class HostUser {
   final int id;
   final String phone;
   final String username;
+  final String? name;
+  final String? avatarUrl;
   final bool isHost;
   final bool isAdmin;
   final String hostStatus;
@@ -336,6 +434,8 @@ class HostUser {
     required this.id,
     required this.phone,
     required this.username,
+    this.name,
+    this.avatarUrl,
     required this.isHost,
     required this.isAdmin,
     required this.hostStatus,
@@ -350,6 +450,8 @@ class HostUser {
         id: j['id'] as int? ?? 0,
         phone: j['phone'] as String? ?? '',
         username: j['username'] as String? ?? 'Giver',
+        name: j['name'] as String?,
+        avatarUrl: j['avatarUrl'] as String?,
         isHost: j['isHost'] as bool? ?? false,
         isAdmin: j['isAdmin'] as bool? ?? false,
         hostStatus: j['hostStatus'] as String? ?? 'none',
@@ -405,6 +507,20 @@ class AdminStats {
   final int activeCampaigns;
   final int pendingApplications;
   final int dailyRateCents;
+  final int usersTotal;
+  final int newUsers7d;
+  final int newUsers30d;
+  final int campaignsTotal;
+  final int newCampaigns7d;
+  final int newCampaigns30d;
+  final int donationsTotal;
+  final int newDonations7d;
+  final int newDonations30d;
+  final int receiptsDownloaded;
+  final int receiptsDownloaded7d;
+  final int activePledges;
+  final int openTickets;
+  final int pendingDeleteRequests;
 
   const AdminStats({
     required this.totalRaisedCents,
@@ -414,6 +530,20 @@ class AdminStats {
     required this.activeCampaigns,
     required this.pendingApplications,
     required this.dailyRateCents,
+    required this.usersTotal,
+    required this.newUsers7d,
+    required this.newUsers30d,
+    required this.campaignsTotal,
+    required this.newCampaigns7d,
+    required this.newCampaigns30d,
+    required this.donationsTotal,
+    required this.newDonations7d,
+    required this.newDonations30d,
+    required this.receiptsDownloaded,
+    required this.receiptsDownloaded7d,
+    required this.activePledges,
+    required this.openTickets,
+    required this.pendingDeleteRequests,
   });
 
   factory AdminStats.fromJson(Map<String, dynamic> j) => AdminStats(
@@ -424,6 +554,20 @@ class AdminStats {
         activeCampaigns: j['activeCampaigns'] as int? ?? 0,
         pendingApplications: j['pendingApplications'] as int? ?? 0,
         dailyRateCents: j['dailyRateCents'] as int? ?? 0,
+        usersTotal: j['usersTotal'] as int? ?? 0,
+        newUsers7d: j['newUsers7d'] as int? ?? 0,
+        newUsers30d: j['newUsers30d'] as int? ?? 0,
+        campaignsTotal: j['campaignsTotal'] as int? ?? 0,
+        newCampaigns7d: j['newCampaigns7d'] as int? ?? 0,
+        newCampaigns30d: j['newCampaigns30d'] as int? ?? 0,
+        donationsTotal: j['donationsTotal'] as int? ?? 0,
+        newDonations7d: j['newDonations7d'] as int? ?? 0,
+        newDonations30d: j['newDonations30d'] as int? ?? 0,
+        receiptsDownloaded: j['receiptsDownloaded'] as int? ?? 0,
+        receiptsDownloaded7d: j['receiptsDownloaded7d'] as int? ?? 0,
+        activePledges: j['activePledges'] as int? ?? 0,
+        openTickets: j['openTickets'] as int? ?? 0,
+        pendingDeleteRequests: j['pendingDeleteRequests'] as int? ?? 0,
       );
 }
 
@@ -475,6 +619,69 @@ class AdminTransaction {
       );
 
   String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? 'Giver');
+}
+
+/// Full detail for one transaction (admin view).
+class TransactionDetail {
+  final int id;
+  final int? campaignId;
+  final String campaignTitle;
+  final String? donorUsername;
+  final String? donorName;
+  final bool isAnonymous;
+  final String phone;
+  final int amountCents;
+  final int platformFeeCents;
+  final int lipilaFeeCents;
+  final int payoutCents;
+  final String status;
+  final String? lipilaReference;
+  final String? lipilaIdentifier;
+  final String? confirmedAt;
+  final String createdAt;
+  final bool hideAmount;
+
+  const TransactionDetail({
+    required this.id,
+    this.campaignId,
+    required this.campaignTitle,
+    this.donorUsername,
+    this.donorName,
+    this.isAnonymous = false,
+    required this.phone,
+    required this.amountCents,
+    required this.platformFeeCents,
+    required this.lipilaFeeCents,
+    required this.payoutCents,
+    required this.status,
+    this.lipilaReference,
+    this.lipilaIdentifier,
+    this.confirmedAt,
+    required this.createdAt,
+    this.hideAmount = false,
+  });
+
+  factory TransactionDetail.fromJson(Map<String, dynamic> j) => TransactionDetail(
+        id: j['id'] as int? ?? 0,
+        campaignId: j['campaignId'] as int?,
+        campaignTitle: j['campaignTitle'] as String? ?? '',
+        donorUsername: j['donorUsername'] as String?,
+        donorName: j['donorName'] as String?,
+        isAnonymous: j['isAnonymous'] as bool? ?? false,
+        phone: j['phone'] as String? ?? '',
+        amountCents: j['amountCents'] as int? ?? 0,
+        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+        lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
+        payoutCents: j['payoutCents'] as int? ?? 0,
+        status: j['status'] as String? ?? '',
+        lipilaReference: j['lipilaReference'] as String?,
+        lipilaIdentifier: j['lipilaIdentifier'] as String?,
+        confirmedAt: j['confirmedAt'] as String?,
+        createdAt: j['createdAt'] as String? ?? '',
+        hideAmount: j['hideAmount'] as bool? ?? false,
+      );
+
+  String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? donorUsername ?? 'Giver');
 }
 
 class Disbursement {

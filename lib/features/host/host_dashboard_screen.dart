@@ -9,7 +9,10 @@ import '../../core/api_client.dart';
 import '../../core/badges.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/avatar.dart';
 import '../auth/auth_controller.dart';
+import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -34,8 +37,8 @@ class HostDashboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: host.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+       body: host.when(
+         loading: () => const Center(child: AppIconSpinner()),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -62,17 +65,10 @@ class HostDashboardScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      CircleAvatar(
+                      Avatar(
+                        url: data.user.avatarUrl,
+                        name: data.user.name?.isNotEmpty == true ? data.user.name! : data.user.username,
                         radius: 22,
-                        backgroundColor: AppColors.primary,
-                        child: Text(
-                          data.user.username.substring(0, 1),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                          ),
-                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -80,14 +76,18 @@ class HostDashboardScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              data.user.username,
+                              data.user.name?.isNotEmpty == true
+                                  ? data.user.name!
+                                  : data.user.username,
                               style: Theme.of(context)
                                   .textTheme
                                   .titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             Text(
-                              data.user.phone,
+                              data.user.name?.isNotEmpty == true
+                                  ? '${data.user.username} • ${data.user.phone}'
+                                  : data.user.phone,
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
@@ -199,42 +199,81 @@ class HostDashboardScreen extends ConsumerWidget {
                 Card(
                   child: Column(
                     children: [
-                      for (final t in data.transactions)
-                        ListTile(
-                          dense: true,
-                          leading: Icon(
-                            t.status == 'confirmed'
-                                ? LucideIcons.checkCircle
-                                : t.status == 'failed'
-                                    ? LucideIcons.xCircle
-                                    : LucideIcons.clock,
-                            color: t.status == 'confirmed'
-                                ? AppColors.primary
-                                : t.status == 'failed'
-                                    ? AppColors.danger
-                                    : AppColors.gold,
-                          ),
-                          title: Text('${t.name} - ${formatKwacha(t.amountCents)}'),
-                          subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.date}'),
-                          isThreeLine: true,
-                          trailing: t.status == 'confirmed'
-                              ? IconButton(
-                                  tooltip: 'Download receipt',
-                                  icon: const Icon(LucideIcons.download, size: 18),
-                                  onPressed: () async {
-                                    final url = ref.read(apiClientProvider).receiptUrl(t.id);
-                                    final uri = Uri.parse(url);
-                                    if (await canLaunchUrl(uri)) {
-                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                    } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Could not open receipt')),
-                                      );
-                                    }
-                                  },
-                                )
-                              : null,
-                        ),
+                       for (final t in data.transactions)
+                         ListTile(
+                           dense: true,
+                           leading: Icon(
+                             t.status == 'confirmed'
+                                 ? LucideIcons.checkCircle
+                                 : t.status == 'failed'
+                                     ? LucideIcons.xCircle
+                                     : LucideIcons.clock,
+                             color: t.status == 'confirmed'
+                                 ? AppColors.primary
+                                 : t.status == 'failed'
+                                     ? AppColors.danger
+                                     : AppColors.gold,
+                           ),
+                           title: Text('${t.displayName} - ${formatKwacha(t.amountCents)}'),
+                           subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.createdAt}'),
+                           isThreeLine: true,
+                           trailing: t.status == 'confirmed'
+                               ? IconButton(
+                                   tooltip: 'Download receipt',
+                                   icon: const Icon(LucideIcons.download, size: 18),
+                                   onPressed: () async {
+                                     final url = ref.read(apiClientProvider).receiptUrl(t.id);
+                                     final uri = Uri.parse(url);
+                                     final messenger = ScaffoldMessenger.of(context);
+                                     if (await canLaunchUrl(uri)) {
+                                       await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                     } else {
+                                       messenger.showSnackBar(
+                                         const SnackBar(content: Text('Could not open receipt')),
+                                       );
+                                     }
+                                   },
+                                 )
+                               : t.status == 'pending' && t.lipilaReference != null
+                                   ? IconButton(
+                                       tooltip: 'Check status',
+                                       icon: const Icon(LucideIcons.refreshCw, size: 18),
+                                       onPressed: () async {
+                                         try {
+                                           final res = await ref.read(apiClientProvider)
+                                               .checkContributionStatus(t.lipilaReference!);
+                                           final newStatus = res['status'] as String? ?? 'pending';
+                                           if (newStatus == 'confirmed' || newStatus == 'failed') {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Transaction is now $newStatus'),
+                                                ),
+                                              );
+                                              ref.invalidate(hostProvider);
+                                            }
+                                          } else {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Still pending on Lipila'),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        } catch (_) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Could not check status'),
+                                              ),
+                                            );
+                                          }
+                                         }
+                                       },
+                                     )
+                                   : null,
+                         ),
                     ],
                   ),
                 ),
@@ -432,10 +471,11 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
                 onPressed: _submitting ? null : _submit,
                 icon: const Icon(LucideIcons.send, size: 18),
                 label: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                     ? SizedBox(
+                         width: 20,
+                         height: 20,
+                         child: AppIconSpinner(size: 20, color: Colors.white),
+                       )
                     : const Text('Submit application'),
               ),
             ),
@@ -506,6 +546,104 @@ class _HostCampaignCard extends ConsumerWidget {
     }
   }
 
+  Future<void> _postAnnouncement(WidgetRef ref, BuildContext context) async {
+    final controller = TextEditingController();
+    var posting = false;
+
+    final posted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 8,
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Post an update to ${campaign.title}',
+                textAlign: TextAlign.center,
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 6,
+                maxLength: 500,
+                textCapitalization: TextCapitalization.sentences,
+                onChanged: (_) => setSheetState(() {}),
+                decoration: const InputDecoration(
+                  hintText: 'Share progress, thank your donors, or announce news…',
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: posting ? null : () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: posting || controller.text.trim().isEmpty
+                          ? null
+                          : () async {
+                              setSheetState(() => posting = true);
+                              final messenger = ScaffoldMessenger.of(ctx);
+                              try {
+                                await ref
+                                    .read(apiClientProvider)
+                                    .postAnnouncement(campaign.id, controller.text.trim());
+                                if (ctx.mounted) Navigator.pop(ctx, true);
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Update posted — donors can now see it')),
+                                );
+                                ref.invalidate(hostProvider);
+                              } on ApiException catch (e) {
+                                setSheetState(() => posting = false);
+                                messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                              } catch (_) {
+                                setSheetState(() => posting = false);
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Could not post the update. Try again.')),
+                                );
+                              }
+                            },
+                      icon: posting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(LucideIcons.send, size: 18),
+                      label: const Text('Post'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (posted == true) ref.invalidate(hostProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -528,16 +666,8 @@ class _HostCampaignCard extends ConsumerWidget {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: campaign.logoUrl != null
-                      ? Image.network(
-                          campaign.logoUrl!,
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              const Icon(LucideIcons.tent, color: AppColors.primary, size: 20),
-                        )
-                      : const Icon(LucideIcons.tent, color: AppColors.primary, size: 20),
+                  padding: const EdgeInsets.all(4),
+                  child: CampaignImage(campaign: campaign, fit: BoxFit.contain),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -555,6 +685,12 @@ class _HostCampaignCard extends ConsumerWidget {
                   ),
                   onPressed: () => _uploadLogo(ref, context),
                 ),
+                if (campaign.status == 'active')
+                  IconButton(
+                    tooltip: 'Post update',
+                    icon: const Icon(LucideIcons.megaphone, size: 18, color: AppColors.textMuted),
+                    onPressed: () => _postAnnouncement(ref, context),
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -653,21 +789,16 @@ class _HostCampaignCard extends ConsumerWidget {
                   ),
                 if (campaign.status == 'active' && !campaign.promoted)
                   OutlinedButton.icon(
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      try {
-                        final res = await ref
-                            .read(apiClientProvider)
-                            .promoteCampaign(campaign.id);
-                        messenger.showSnackBar(SnackBar(
-                            content: Text(
-                                'Check your phone and enter PIN to promote. Ref: ${res['referenceId']}')));
-                      } on ApiException catch (e) {
-                        messenger.showSnackBar(SnackBar(content: Text(e.message)));
-                      }
-                    },
+                    onPressed: () => context.push('/host/promote'),
                     icon: const Icon(LucideIcons.star, size: 16),
                     label: const Text('Promote', style: TextStyle(fontSize: 13)),
+                  ),
+                if (campaign.status != 'deleted')
+                  IconButton(
+                    tooltip: 'Request deletion',
+                    icon: const Icon(LucideIcons.trash2,
+                        size: 18, color: AppColors.danger),
+                    onPressed: () => _requestDelete(ref, context),
                   ),
               ],
             ),
@@ -675,5 +806,81 @@ class _HostCampaignCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _requestDelete(WidgetRef ref, BuildContext context) async {
+    final reason = TextEditingController();
+    var sending = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Request to delete campaign?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'The admin will review your request. If approved, the campaign will be removed '
+                'from Kingdom Sponsor. Financial records are kept for compliance.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reason,
+                maxLines: 2,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: sending ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: sending
+                  ? null
+                  : () async {
+                      setDialogState(() => sending = true);
+                      final messenger = ScaffoldMessenger.of(ctx);
+                      try {
+                        await ref
+                            .read(apiClientProvider)
+                            .requestCampaignDelete(campaign.id,
+                                reason: reason.text.trim());
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx, true);
+                          messenger.showSnackBar(const SnackBar(
+                              content:
+                                  Text('Delete request sent to the admin')));
+                        }
+                      } on ApiException catch (e) {
+                        setDialogState(() => sending = false);
+                        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                      } catch (_) {
+                        setDialogState(() => sending = false);
+                        messenger.showSnackBar(const SnackBar(
+                            content: Text('Could not send the request. Try again.')));
+                      }
+                    },
+              child: sending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Send request'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reason.dispose();
+    if (ok == true) ref.invalidate(hostProvider);
   }
 }

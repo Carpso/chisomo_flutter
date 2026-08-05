@@ -1,7 +1,7 @@
 name: kingdom_sponsor_app
 description: "Kingdom Sponsor - neutral fundraising platform app."
 publish_to: 'none'
-version: 0.2.0
+version: 0.3.1
 
 environment:
   sdk: ^3.9.0
@@ -25,15 +25,30 @@ dependencies:
   http_parser: ^4.1.2
   firebase_core: ^3.13.0
   firebase_messaging: ^15.2.5
-  sentry_flutter: ^7.0.0
+  sentry_flutter: ^9.14.0
+  app_links: ^6.1.0
+  cached_network_image: ^3.4.1
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
 
   assets:
     - .env
+    - assets/Kingdom Sponsor.jpg
+    - assets/kingdom_sponsor_logo.png
+
+# App-icon generation from the dedicated icon file. See assets/kingdom_sponsor_app_icon.jpg.
+flutter_launcher_icons:
+  image_path: "assets/kingdom_sponsor_app_icon.jpg"
+  android: "ic_launcher"
+  ios: true
+  web:
+    image_path: "assets/kingdom_sponsor_app_icon.jpg"
+  remove_alpha: true

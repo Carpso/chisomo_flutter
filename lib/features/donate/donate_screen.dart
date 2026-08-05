@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/phone_field.dart';
 import '../auth/auth_controller.dart';
 import '../campaigns/campaigns_controller.dart';
@@ -38,6 +40,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   _Phase _phase = _Phase.form;
   String? _referenceId;
+  int? _contributionId;
   String? _error;
   Timer? _pollTimer;
 
@@ -115,6 +118,10 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             .read(apiClientProvider)
             .get('/api/contributions/status/$_referenceId');
         final status = res['status'] as String? ?? 'pending';
+        final contributionId = res['id'] as int?;
+        if (contributionId != null) {
+          _contributionId = contributionId;
+        }
         if (status == 'confirmed') {
           timer.cancel();
           if (mounted) {
@@ -267,7 +274,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           Padding(
             padding: const EdgeInsets.only(left: 16, right: 16, top: 4),
             child: DropdownButtonFormField<int>(
-              value: _recurringDay,
+              initialValue: _recurringDay,
               decoration: const InputDecoration(
                 labelText: 'Reminder day (1-28)',
                 prefixIcon: Icon(LucideIcons.calendarDays),
@@ -308,9 +315,10 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           onPressed: _submitting ? null : _donate,
           icon: const Icon(LucideIcons.heartHandshake),
           label: _submitting
-              ? const SizedBox(
-                  width: 22, height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+               ? SizedBox(
+                   width: 22, height: 22,
+                   child: AppIconSpinner(size: 22, color: Colors.white),
+                 )
               : Text('Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}'),
         ),
         const SizedBox(height: 8),
@@ -351,6 +359,27 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 24),
+            if (_contributionId != null) ...[
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final url = ref
+                      .read(apiClientProvider)
+                      .receiptUrl(_contributionId!);
+                  final uri = Uri.parse(url);
+                  final messenger = ScaffoldMessenger.of(context);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } else {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Could not open receipt')),
+                    );
+                  }
+                },
+                icon: const Icon(LucideIcons.download, size: 18),
+                label: const Text('Download receipt'),
+              ),
+              const SizedBox(height: 12),
+            ],
             ElevatedButton(onPressed: () => context.go('/'), child: const Text('Back to campaigns')),
           ],
         ),
@@ -399,11 +428,11 @@ class _AwaitingPin extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 56,
-              height: 56,
-              child: CircularProgressIndicator(strokeWidth: 4),
-            ),
+             const SizedBox(
+               width: 56,
+               height: 56,
+               child: AppIconSpinner(size: 56),
+             ),
             const SizedBox(height: 24),
             Text(
               'Check your phone',

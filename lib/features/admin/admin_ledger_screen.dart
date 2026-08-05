@@ -1,17 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
-class AdminTransactionsScreen extends ConsumerWidget {
+class AdminTransactionsScreen extends ConsumerStatefulWidget {
   const AdminTransactionsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminTransactionsScreen> createState() => _AdminTransactionsScreenState();
+}
+
+class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScreen> {
+  static const _filters = <String, String?>{
+    'All': null,
+    'Confirmed': 'confirmed',
+    'Pending': 'pending',
+    'Failed': 'failed',
+  };
+
+  String _filter = 'All';
+
+  @override
+  Widget build(BuildContext context) {
     final ledger = ref.watch(adminLedgerProvider);
     return Scaffold(
       appBar: AppBar(
@@ -23,28 +39,55 @@ class AdminTransactionsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: ledger.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('$e', textAlign: TextAlign.center),
-          ),
-        ),
-        data: (data) {
-          final txs = data.transactions;
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(adminLedgerProvider),
-            child: txs.isEmpty
-                ? const _Empty(message: 'No contributions yet.')
-                : ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: txs.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, i) => _TxTile(tx: txs[i]),
+      body: Column(
+        children: [
+          SizedBox(
+            height: 52,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              children: [
+                for (final entry in _filters.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(entry.key),
+                      selected: _filter == entry.key,
+                      onSelected: (_) => setState(() => _filter = entry.key),
+                    ),
                   ),
-          );
-        },
+              ],
+            ),
+          ),
+          Expanded(
+            child: ledger.when(
+              loading: () => const Center(child: AppIconSpinner()),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('$e', textAlign: TextAlign.center),
+                ),
+              ),
+              data: (data) {
+                final filter = _filters[_filter];
+                final txs = filter == null
+                    ? data.transactions
+                    : data.transactions.where((t) => t.status == filter).toList();
+                return RefreshIndicator(
+                  onRefresh: () async => ref.invalidate(adminLedgerProvider),
+                  child: txs.isEmpty
+                      ? const _Empty(message: 'No contributions yet.')
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: txs.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 6),
+                          itemBuilder: (context, i) => _TxTile(tx: txs[i]),
+                        ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -66,16 +109,16 @@ class AdminDisbursementsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: ledger.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('$e', textAlign: TextAlign.center),
-          ),
-        ),
-        data: (data) {
-          final disbs = data.disbursements;
+       body: ledger.when(
+         loading: () => const Center(child: AppIconSpinner()),
+         error: (e, _) => Center(
+           child: Padding(
+             padding: const EdgeInsets.all(24),
+             child: Text('$e', textAlign: TextAlign.center),
+           ),
+         ),
+          data: (data) {
+           final disbs = data.disbursements;
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminLedgerProvider),
             child: disbs.isEmpty
@@ -111,7 +154,15 @@ class _TxTile extends StatelessWidget {
           '${tx.campaignTitle}\n${tx.phone}\n${tx.createdAt}${tx.lipilaReference == null ? '' : '\n${tx.lipilaReference}'}',
         ),
         isThreeLine: true,
-        trailing: _StatusChip(status: tx.status),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StatusChip(status: tx.status),
+            const SizedBox(width: 4),
+            const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textMuted),
+          ],
+        ),
+        onTap: () => context.push('/admin/transactions/${tx.id}'),
       ),
     );
   }

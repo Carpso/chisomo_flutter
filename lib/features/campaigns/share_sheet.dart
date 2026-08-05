@@ -9,10 +9,14 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../campaigns/models.dart';
 
-/// Bottom sheet offering WhatsApp share, a QR code, and copy-link.
+/// Bottom sheet offering WhatsApp share, a QR code with app icon, and copy-link.
 Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campaign) async {
-  final url = ref.read(apiClientProvider).shareUrl(campaign.id);
-  final text = '${campaign.title}\n${campaign.description}\nGive here: $url';
+  final api = ref.read(apiClientProvider);
+  final url = api.shareUrl(campaign.id);
+  final deepLink = api.deepLink(campaign.id);
+  final playStore = ApiClient.playStoreUrl;
+  final text =
+      '${campaign.title}\n${campaign.description}\nGive here: $url\nNo app yet? Get Kingdom Sponsor: $playStore';
   final waUrl = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
 
   await showModalBottomSheet<void>(
@@ -60,6 +64,36 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
             icon: const Icon(LucideIcons.copy, size: 18),
             label: const Text('Copy link'),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+            onPressed: () async {
+              if (!await launchUrl(Uri.parse(deepLink), mode: LaunchMode.externalApplication)) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Open the app from the Play Store first.')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(LucideIcons.smartphone, size: 18),
+            label: const Text('Open in app'),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+            onPressed: () async {
+              if (!await launchUrl(Uri.parse(playStore), mode: LaunchMode.externalApplication)) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Could not open the Play Store.')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(LucideIcons.shoppingBag, size: 18),
+            label: const Text('No app? Get it on Play Store'),
+          ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
@@ -70,10 +104,38 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
             ),
             child: Column(
               children: [
-                QrImageView(
-                  data: url,
-                  size: 180,
-                  backgroundColor: Colors.white,
+                Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      QrImageView(
+                        data: url,
+                        size: 180,
+                        backgroundColor: Colors.white,
+                      ),
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(3),
+                        child: Image.asset(
+                          'assets/kingdom_sponsor_logo.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.auto_awesome, size: 24),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(

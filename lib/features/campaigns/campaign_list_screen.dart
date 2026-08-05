@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../../core/offline_cache.dart';
 import '../../core/theme.dart';
 import '../auth/auth_controller.dart';
 import 'campaigns_controller.dart';
+import 'campaign_image.dart';
 import 'models.dart';
 
 class CampaignListScreen extends ConsumerWidget {
@@ -15,18 +17,20 @@ class CampaignListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final campaigns = ref.watch(campaignsProvider);
+    final offline = ref.watch(offlineModeProvider);
     final isAdmin = ref.watch(authControllerProvider).value?.isAdmin ?? false;
-    final trendId = ref.watch(campaignsProvider).value != null && (ref.watch(campaignsProvider).value?.isNotEmpty ?? false)
-        ? ref
-            .watch(campaignsProvider)
-            .value!
+    final trendId = campaigns.value != null && (campaigns.value?.isNotEmpty ?? false)
+        ? campaigns.value!
             .reduce((a, b) => (a.dailyRateCents >= b.dailyRateCents) ? a : b)
             .id
         : -1;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kingdom Sponsor'),
+        title: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Kingdom Sponsor', maxLines: 1),
+        ),
         actions: [
           if (isAdmin)
             IconButton(
@@ -43,21 +47,51 @@ class CampaignListScreen extends ConsumerWidget {
             icon: const Icon(LucideIcons.user),
             onPressed: () => context.push('/host'),
           ),
+          IconButton(
+            icon: const Icon(LucideIcons.settings),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
+          ),
         ],
       ),
-      body: campaigns.when(
-        loading: () => const _ListSkeleton(),
-        error: (e, _) => _ErrorRetry(message: '$e', onRetry: () => ref.invalidate(campaignsProvider)),
-        data: (items) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(campaignsProvider),
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 14),
-            itemBuilder: (context, i) =>
-                _CampaignCard(campaign: items[i], isTrending: items[i].id == trendId),
+      body: Column(
+        children: [
+          if (offline)
+            Container(
+              width: double.infinity,
+              color: AppColors.gold.withValues(alpha: 0.15),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: const Row(
+                children: [
+                  Icon(LucideIcons.wifiOff, size: 16, color: Color(0xFF8A6A00)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Offline — showing last saved campaigns',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: campaigns.when(
+              loading: () => const _ListSkeleton(),
+              error: (e, _) =>
+                  _ErrorRetry(message: '$e', onRetry: () => ref.invalidate(campaignsProvider)),
+              data: (items) => RefreshIndicator(
+                onRefresh: () async => ref.invalidate(campaignsProvider),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 14),
+                  itemBuilder: (context, i) =>
+                      _CampaignCard(campaign: items[i], isTrending: items[i].id == trendId),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -92,16 +126,8 @@ class _CampaignCard extends StatelessWidget {
                       color: AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: campaign.logoUrl != null
-                        ? Image.network(
-                            campaign.logoUrl!,
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const Icon(LucideIcons.tent, color: AppColors.primary),
-                          )
-                        : const Icon(LucideIcons.tent, color: AppColors.primary),
+                    padding: const EdgeInsets.all(6),
+                    child: CampaignImage(campaign: campaign, fit: BoxFit.contain),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -170,8 +196,7 @@ Text(
                               : '${campaign.donorCount} ${campaign.donorCount == 1 ? 'donor' : 'donors'}',
                           style: theme.textTheme.bodySmall
                               ?.copyWith(color: AppColors.textMuted),
-                        ),
-                      ],
+                        ),                      ],
                     ),
                       ],
                     ),

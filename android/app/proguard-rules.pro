@@ -1,21 +1,21 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Kingdom Sponsor release ProGuard/R8 rules.
+# R8 full mode is enabled via android.enableR8.fullMode=true in gradle.properties.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface {
-#   public *;
-#}
+# Keep line numbers for readable stack traces (Sentry).
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Firebase Messaging / google-services generated classes.
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Flutter engine + plugins (kept by the Flutter Gradle plugin; explicit fallback).
+-keep class io.flutter.** { *; }
+-dontwarn io.flutter.**
+
+# Keep entry points that are reached via reflection.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

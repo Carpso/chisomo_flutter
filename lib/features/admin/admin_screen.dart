@@ -5,6 +5,8 @@ import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/api_client.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -14,6 +16,7 @@ class AdminScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final admin = ref.watch(adminDataProvider);
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -25,8 +28,8 @@ class AdminScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: admin.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+       body: admin.when(
+         loading: () => const Center(child: AppIconSpinner()),
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -48,8 +51,7 @@ class AdminScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _StatGrid(stats: data.stats),
-              const SizedBox(height: 16),
+              _StatGrid(stats: data.stats),              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
@@ -82,7 +84,10 @@ class AdminScreen extends ConsumerWidget {
                 _SectionTitle(
                   icon: LucideIcons.trophy,
                   title: 'Top campaigns',
-                  trailing: '${data.topCampaigns.length} shown',
+                  trailing: Text(
+                    '${data.topCampaigns.length} shown',
+                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Card(
@@ -163,10 +168,549 @@ class AdminScreen extends ConsumerWidget {
                 ),
               ],
               _PromotionsSection(),
+              const SizedBox(height: 12),
+              const _PromoConfigSection(),
+              const SizedBox(height: 12),
+              const _TicketsSection(),
+              const SizedBox(height: 12),
+              const _DeleteRequestsSection(),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PromoConfigSection extends ConsumerStatefulWidget {
+  const _PromoConfigSection();
+
+  @override
+  ConsumerState<_PromoConfigSection> createState() => _PromoConfigSectionState();
+}
+
+class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
+  int? _priceCents;
+  int? _days;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ref.read(apiClientProvider).getPromotionConfig();
+      if (mounted) {
+        setState(() {
+          _priceCents = res['priceCents'] as int?;
+          _days = res['days'] as int?;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _edit() async {
+    final priceController =
+        TextEditingController(text: ((_priceCents ?? 15000) / 100).toStringAsFixed(0));
+    final daysController = TextEditingController(text: '${_days ?? 7}');
+    var saving = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Promotion paywall'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: priceController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Price (K)',
+                  helperText: 'What hosts pay to reach the top-5',
+                  prefixText: 'K ',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: daysController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Days (1-30)',
+                  helperText: 'How long the promotion stays live',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final price = int.tryParse(priceController.text.trim());
+                      final days = int.tryParse(daysController.text.trim());
+                      if (price == null || days == null) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Enter valid numbers')),
+                        );
+                        return;
+                      }
+                      setDialogState(() => saving = true);
+                      try {
+                        await ref
+                            .read(apiClientProvider)
+                            .setPromotionConfig(price * 100, days);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx, true);
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(
+                                content: Text('Promotion settings saved')),
+                          );
+                        }
+                        await _load();
+                      } on ApiException catch (e) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx)
+                              .showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      } catch (_) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Could not save. Try again.')),
+                          );
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) await _load();
+    priceController.dispose();
+    daysController.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(LucideIcons.settings, color: AppColors.primary),
+        title: const Text('Promotion paywall'),
+        subtitle: _loading
+            ? const Text('Loading…')
+            : Text(
+                'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days • set by the admin',
+              ),
+        trailing: OutlinedButton.icon(
+          onPressed: _edit,
+          icon: const Icon(LucideIcons.pencil, size: 15),
+          label: const Text('Edit'),
+        ),
+      ),
+    );
+  }
+}
+
+class _TicketsSection extends ConsumerStatefulWidget {
+  const _TicketsSection();
+
+  @override
+  ConsumerState<_TicketsSection> createState() => _TicketsSectionState();
+}
+
+class _TicketsSectionState extends ConsumerState<_TicketsSection> {
+  List<dynamic> _tickets = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final tickets = await ref.read(apiClientProvider).getAdminTickets(status: 'open');
+      if (mounted) setState(() => _tickets = tickets);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load tickets.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _reply(Map<String, dynamic> ticket) async {
+    final text = TextEditingController();
+    var saving = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: AlertDialog(
+            title: Text('Reply to #${ticket['id']}'),
+            content: TextField(
+              controller: text,
+              maxLines: 4,
+              maxLength: 2000,
+              decoration: const InputDecoration(
+                labelText: 'Reply (user is notified by SMS + push)',
+                alignLabelWithHint: true,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: saving || text.text.trim().isEmpty
+                    ? null
+                    : () async {
+                        setDialogState(() => saving = true);
+                        try {
+                          await ref.read(apiClientProvider).replySupportTicket(
+                              ticket['id'] as int, text.text.trim());
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx, true);
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('Reply sent to the user')),
+                            );
+                          }
+                        } on ApiException catch (e) {
+                          setDialogState(() => saving = false);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx)
+                                .showSnackBar(SnackBar(content: Text(e.message)));
+                          }
+                        } catch (_) {
+                          setDialogState(() => saving = false);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('Could not send. Try again.')),
+                            );
+                          }
+                        }
+                      },
+                child: saving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Send'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (ok == true) await _load();
+    text.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(
+          icon: LucideIcons.messageCircle,
+          title: 'Support tickets (open)',
+          trailing: _loading
+              ? null
+              : TextButton(onPressed: _load, child: const Text('Refresh')),
+        ),
+        const SizedBox(height: 8),
+        if (_loading)
+          const Center(child: AppIconSpinner())
+        else if (_error != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('$_error',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.danger)),
+            ),
+          )
+        else if (_tickets.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No open tickets.',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
+          )
+        else
+          for (final t in _tickets)
+            Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '#${t['id']} ${t['subject'] ?? ''}',
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          (t['createdAt'] ?? '').toString().substring(0, 10),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${t['username'] ?? 'Giver'} • ${t['phone'] ?? ''}',
+                        style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 4),
+                    Text(t['message'] ?? '',
+                        maxLines: 3, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Spacer(),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          ),
+                          onPressed: () => _reply(t),
+                          icon: const Icon(LucideIcons.reply, size: 15),
+                          label: const Text('Reply'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+class _DeleteRequestsSection extends ConsumerStatefulWidget {
+  const _DeleteRequestsSection();
+
+  @override
+  ConsumerState<_DeleteRequestsSection> createState() =>
+      _DeleteRequestsSectionState();
+}
+
+class _DeleteRequestsSectionState extends ConsumerState<_DeleteRequestsSection> {
+  List<dynamic> _requests = [];
+  bool _loading = true;
+  String? _error;
+  final Set<int> _busy = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final requests = await ref.read(apiClientProvider).getDeleteRequests();
+      if (mounted) setState(() => _requests = requests);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load delete requests.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _decide(Map<String, dynamic> request, bool approve) async {
+    final confirmed = approve ||
+        (await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Reject delete request?'),
+            content: const Text('The host will be notified that the campaign stays up.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Reject'),
+              ),
+            ],
+          ),
+        ) ??
+            false);
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busy.add(request['id'] as int));
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final api = ref.read(apiClientProvider);
+      final id = request['id'] as int;
+      if (approve) {
+        await api.approveDeleteRequest(id);
+      } else {
+        await api.rejectDeleteRequest(id);
+      }
+      await _load();
+      messenger.showSnackBar(SnackBar(
+          content: Text(approve ? 'Campaign removed' : 'Request rejected')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Action failed. Try again.')));
+    } finally {
+      if (mounted) setState(() => _busy.remove(request['id'] as int));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(
+          icon: LucideIcons.trash2,
+          title: 'Campaign delete requests',
+          trailing: _loading
+              ? null
+              : TextButton(onPressed: _load, child: const Text('Refresh')),
+        ),
+        const SizedBox(height: 8),
+        if (_loading)
+          const Center(child: AppIconSpinner())
+        else if (_error != null)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('$_error',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: AppColors.danger)),
+            ),
+          )
+        else if (_requests.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No delete requests.',
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
+          )
+        else
+          for (final r in _requests)
+            Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      r['campaignTitle'] ?? 'Campaign',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${r['hostUsername'] ?? 'Host'} • ${r['hostPhone'] ?? ''}',
+                        style: theme.textTheme.bodySmall),
+                    if (r['reason'] != null && (r['reason'] as String).isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Reason: ${r['reason']}',
+                            style: theme.textTheme.bodySmall),
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (_busy.contains(r['id']))
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else ...[
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.danger,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              onPressed: () => _decide(r, true),
+                              icon: const Icon(LucideIcons.trash, size: 15),
+                              label: const Text('Delete'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                              onPressed: () => _decide(r, false),
+                              icon: const Icon(LucideIcons.x, size: 15),
+                              label: const Text('Keep'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+      ],
     );
   }
 }
@@ -184,7 +728,7 @@ class _PromotionsSection extends ConsumerWidget {
         _SectionTitle(icon: LucideIcons.star, title: 'Promoted campaigns (top 5)'),
         const SizedBox(height: 8),
         promotions.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const Center(child: AppIconSpinner()),
           error: (e, _) => Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -205,37 +749,123 @@ class _PromotionsSection extends ConsumerWidget {
                   child: Column(
                     children: [
                       for (final p in items)
-                        ListTile(
-                          dense: true,
-                          leading: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: _statusColor(p.status).withValues(alpha: 0.15),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              p.status == 'active' ? LucideIcons.star : LucideIcons.clock,
-                              size: 16,
-                              color: _statusColor(p.status),
-                            ),
-                          ),
-                          title: Text(p.campaignTitle,
-                              style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Column(
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Host: ${p.hostPhone}'),
-                              Text('K${(p.amountCents / 100).toStringAsFixed(0)} • ${p.days} days • ${p.status}'),
-                              if (p.expiresAt != null)
-                                Text('Expires: ${p.expiresAt!.substring(0, 10)}',
-                                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+                              ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(p.status).withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    p.status == 'active'
+                                        ? LucideIcons.star
+                                        : p.status == 'pending_approval'
+                                            ? LucideIcons.hourglass
+                                            : LucideIcons.clock,
+                                    size: 16,
+                                    color: _statusColor(p.status),
+                                  ),
+                                ),
+                                title: Text(p.campaignTitle,
+                                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Host: ${p.hostPhone}'),
+                                    Text(
+                                        'K${(p.amountCents / 100).toStringAsFixed(0)} • ${p.days} days • ${p.status}'),
+                                    if (p.expiresAt != null)
+                                      Text(
+                                          'Expires: ${p.expiresAt!.substring(0, 10)}',
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(color: AppColors.textMuted)),
+                                  ],
+                                ),
+                                isThreeLine: true,
+                                trailing: Text(
+                                  p.createdAt.substring(0, 10),
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: AppColors.textMuted),
+                                ),
+                              ),
+                              if (p.status == 'pending_approval') ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppColors.primary,
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                        ),
+                                        onPressed: () async {
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
+                                          final res = await ref
+                                              .read(promotionsProvider.notifier)
+                                              .decide(p.id, approve: true);
+                                          messenger.showSnackBar(SnackBar(
+                                              content: Text(res['message']
+                                                      as String? ??
+                                                  'Promotion approved')));
+                                        },
+                                        icon: const Icon(LucideIcons.check, size: 15),
+                                        label: const Text('Approve'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                        ),
+                                        onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Reject promotion?'),
+                                              content: Text(
+                                                  'The host will be notified by SMS. Contact them to arrange a refund.'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(ctx, false),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                FilledButton(
+                                                  style: FilledButton.styleFrom(
+                                                      backgroundColor: AppColors.danger),
+                                                  onPressed: () => Navigator.pop(ctx, true),
+                                                  child: const Text('Reject'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed != true || !context.mounted) return;
+                                          final messenger = ScaffoldMessenger.of(context);
+                                          final res = await ref
+                                              .read(promotionsProvider.notifier)
+                                              .decide(p.id, approve: false);
+                                          messenger.showSnackBar(SnackBar(
+                                              content: Text(res['message']
+                                                      as String? ??
+                                                  'Promotion rejected')));
+                                        },
+                                        icon: const Icon(LucideIcons.x, size: 15),
+                                        label: const Text('Reject'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
-                          ),
-                          isThreeLine: true,
-                          trailing: Text(
-                            p.createdAt.substring(0, 10),
-                            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                           ),
                         ),
                     ],
@@ -252,8 +882,12 @@ class _PromotionsSection extends ConsumerWidget {
         return AppColors.primary;
       case 'pending':
         return AppColors.gold;
+      case 'pending_approval':
+        return AppColors.gold;
       case 'expired':
         return AppColors.textMuted;
+      case 'rejected':
+        return AppColors.danger;
       case 'refunded':
         return AppColors.danger;
       default:
@@ -266,6 +900,50 @@ class _StatGrid extends StatelessWidget {
   final AdminStats stats;
 
   const _StatGrid({required this.stats});
+
+  void _showBreakdown(BuildContext context, String title, List<(String, String)> rows) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                title,
+                style: Theme.of(ctx)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final (label, value) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(label,
+                          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.textMuted)),
+                    ),
+                    Text(value,
+                        style: Theme.of(ctx)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -282,36 +960,98 @@ class _StatGrid extends StatelessWidget {
           label: 'Total raised',
           value: formatKwacha(stats.totalRaisedCents),
           color: AppColors.primary,
+          onTap: () => context.push('/admin/transactions'),
         ),
         _StatCard(
           icon: LucideIcons.tent,
           label: 'Active campaigns',
           value: '${stats.activeCampaigns}',
           color: AppColors.primaryLight,
+          onTap: () => _showBreakdown(context, 'Campaigns', [
+            ('Active now', '${stats.activeCampaigns}'),
+            ('All time (not deleted)', '${stats.campaignsTotal}'),
+            ('New (7 days)', '${stats.newCampaigns7d}'),
+            ('New (30 days)', '${stats.newCampaigns30d}'),
+          ]),
         ),
         _StatCard(
           icon: LucideIcons.users,
           label: 'Donors',
           value: '${stats.donors}',
           color: AppColors.gold,
+          onTap: () => _showBreakdown(context, 'Donors & users', [
+            ('Distinct donors', '${stats.donors}'),
+            ('Total users', '${stats.usersTotal}'),
+            ('New users (7 days)', '${stats.newUsers7d}'),
+            ('New users (30 days)', '${stats.newUsers30d}'),
+          ]),
         ),
         _StatCard(
           icon: LucideIcons.coins,
           label: 'Platform fees',
           value: formatKwacha(stats.platformFeesCents),
           color: AppColors.primary,
+          onTap: () => context.push('/admin/disbursements'),
         ),
         _StatCard(
           icon: LucideIcons.trendingUp,
           label: 'Per day',
           value: formatKwacha(stats.dailyRateCents),
           color: AppColors.primaryLight,
+          onTap: () => _showBreakdown(context, 'Growth', [
+            ('Daily average raised', formatKwacha(stats.dailyRateCents)),
+            ('Donations (7 days)', '${stats.newDonations7d}'),
+            ('Donations (30 days)', '${stats.newDonations30d}'),
+            ('Donations (all time)', '${stats.donationsTotal}'),
+          ]),
         ),
         _StatCard(
           icon: LucideIcons.hourglass,
           label: 'Pending hosts',
           value: '${stats.pendingApplications}',
           color: AppColors.gold,
+          onTap: () => _showBreakdown(context, 'Host applications', [
+            ('Waiting for approval', '${stats.pendingApplications}'),
+          ]),
+        ),
+        _StatCard(
+          icon: LucideIcons.fileText,
+          label: 'Receipts downloaded',
+          value: '${stats.receiptsDownloaded}',
+          color: AppColors.primary,
+          onTap: () => _showBreakdown(context, 'Receipt downloads', [
+            ('All time', '${stats.receiptsDownloaded}'),
+            ('Last 7 days', '${stats.receiptsDownloaded7d}'),
+          ]),
+        ),
+        _StatCard(
+          icon: LucideIcons.calendarClock,
+          label: 'Active pledges',
+          value: '${stats.activePledges}',
+          color: AppColors.gold,
+          onTap: () => _showBreakdown(context, 'Recurring pledges', [
+            ('Donors on monthly reminders', '${stats.activePledges}'),
+          ]),
+        ),
+        _StatCard(
+          icon: LucideIcons.messageCircle,
+          label: 'Open tickets',
+          value: '${stats.openTickets}',
+          color: stats.openTickets > 0 ? AppColors.danger : AppColors.primary,
+          onTap: () => _showBreakdown(context, 'Support', [
+            ('Waiting for a reply', '${stats.openTickets}'),
+          ]),
+        ),
+        _StatCard(
+          icon: LucideIcons.trash2,
+          label: 'Delete requests',
+          value: '${stats.pendingDeleteRequests}',
+          color: stats.pendingDeleteRequests > 0
+              ? AppColors.danger
+              : AppColors.primaryLight,
+          onTap: () => _showBreakdown(context, 'Campaign deletion', [
+            ('Pending approval', '${stats.pendingDeleteRequests}'),
+          ]),
         ),
       ],
     );
@@ -323,40 +1063,46 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.icon,
     required this.label,
     required this.value,
     required this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: AppColors.textDark,
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: AppColors.textDark,
+              ),
             ),
-          ),
-          Text(label, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
-        ],
+            Text(label, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+          ],
+        ),
       ),
     );
   }
@@ -365,7 +1111,7 @@ class _StatCard extends StatelessWidget {
 class _SectionTitle extends StatelessWidget {
   final IconData icon;
   final String title;
-  final String? trailing;
+  final Widget? trailing;
 
   const _SectionTitle({required this.icon, required this.title, this.trailing});
 
@@ -381,8 +1127,7 @@ class _SectionTitle extends StatelessWidget {
           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const Spacer(),
-        if (trailing != null)
-          Text(trailing!, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+        if (trailing != null) trailing!,
       ],
     );
   }

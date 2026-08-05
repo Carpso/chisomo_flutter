@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_icon_spinner.dart';
 import '../campaigns/campaigns_controller.dart';
 
 class CreateCampaignScreen extends ConsumerStatefulWidget {
@@ -23,6 +25,7 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
   bool _hasGoal = true;
   String? _error;
   DateTime? _endsAt;
+  XFile? _logo;
 
   @override
   void dispose() {
@@ -31,6 +34,16 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
     _goalController.dispose();
     _minWithdrawController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickLogo() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (file != null) setState(() => _logo = file);
   }
 
   Future<void> _create() async {
@@ -50,13 +63,18 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
       _error = null;
     });
     try {
-      await ref.read(hostProvider.notifier).createCampaign(
+      final res = await ref.read(hostProvider.notifier).createCampaign(
             title: title,
             description: description,
             goalCents: _hasGoal ? (goalK * 100).round() : 0,
             minWithdrawCents: (minK * 100).round(),
             endsAt: _endsAt,
           );
+      final campaignId = res['id'] as int?;
+      if (campaignId != null && _logo != null) {
+        final bytes = await _logo!.readAsBytes();
+        await ref.read(apiClientProvider).uploadLogo(campaignId, bytes, _logo!.name);
+      }
       if (mounted) context.go('/host');
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -89,6 +107,20 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
             decoration: const InputDecoration(
               labelText: 'Campaign title',
               hintText: 'e.g. UPC Lusaka Youths - Livingstone Conference Trip',
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onPressed: _pickLogo,
+            icon: Icon(
+              _logo == null ? LucideIcons.imagePlus : LucideIcons.image,
+              size: 18,
+            ),
+            label: Text(
+              _logo == null ? 'Add a photo (optional)' : 'Photo selected — tap to change',
             ),
           ),
           const SizedBox(height: 12),
@@ -152,9 +184,10 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
           ElevatedButton(
             onPressed: _submitting ? null : _create,
             child: _submitting
-                ? const SizedBox(
-                    width: 22, height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                 ? SizedBox(
+                     width: 22, height: 22,
+                     child: AppIconSpinner(size: 22, color: Colors.white),
+                   )
                 : const Text('Create campaign'),
           ),
         ],
