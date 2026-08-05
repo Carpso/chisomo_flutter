@@ -34,10 +34,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _lastOtpRequest == null ||
       DateTime.now().difference(_lastOtpRequest!) > _otpCooldown;
 
-  int get _otpCooldownSeconds => _lastOtpRequest == null
-      ? 0
-      : _otpCooldown.inSeconds -
-          DateTime.now().difference(_lastOtpRequest!).inSeconds;
+  int get _otpCooldownSeconds {
+    if (_lastOtpRequest == null) return 0;
+    final remaining =
+        _otpCooldown.inSeconds - DateTime.now().difference(_lastOtpRequest!).inSeconds;
+    return remaining < 0 ? 0 : remaining;
+  }
 
   void _startCooldownTimer() {
     _cooldownTimer?.cancel();
@@ -64,20 +66,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
       _debugCode = null;
     });
-    _lastOtpRequest = DateTime.now();
-    _startCooldownTimer();
     try {
       final debugCode =
           await ref.read(authControllerProvider.notifier).requestOtp(_phoneE164);
       if (!mounted) return;
       setState(() {
+        _lastOtpRequest = DateTime.now();
         _otpSent = true;
         _debugCode = debugCode;
       });
+      _startCooldownTimer();
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) {
+        setState(() => _error =
+            '${e.message} No code was sent, so you can retry right away.');
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(() => _error =
+            'Could not send the code. Check your connection and try again.');
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -259,11 +267,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                      ? Text('Wait ${_otpCooldownSeconds}s')
                                      : Text('Send code'),
                        ),
-                      if (_otpSent)
+                      if (_otpSent) ...[
                         TextButton(
                           onPressed: () => setState(() => _otpSent = false),
                           child: const Text('Change number'),
                         ),
+                        TextButton(
+                          onPressed:
+                              _submitting || !_canSendOtp ? null : _sendOtp,
+                          child: Text(!_canSendOtp
+                              ? 'Resend code in ${_otpCooldownSeconds}s'
+                              : 'Resend code'),
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       Text(
                         'Hosting a fundraiser? Sign in, open the "Host" tab, then tap "New campaign".',
