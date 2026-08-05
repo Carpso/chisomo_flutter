@@ -239,10 +239,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
                 child: const Text('Cancel'),
               ),
-              FilledButton(
-                onPressed: saving || usernameController.text.trim().length < 3
-                    ? null
-                    : () async {
+              ListenableBuilder(
+                listenable: Listenable.merge([nameController, usernameController]),
+                builder: (context, _) {
+                  final ready = usernameController.text.trim().length >= 3;
+                  return FilledButton(
+                    onPressed: saving || !ready
+                        ? null
+                        : () async {
                         setDialogState(() => saving = true);
                         try {
                           await ref
@@ -273,13 +277,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           }
                         }
                       },
-                child: saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save'),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Save'),
+                  );
+                },
               ),
             ],
           ),
@@ -357,8 +363,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(authControllerProvider);
+          await _fetchLinks();
+        },
+        child: ListView(
+          padding: const EdgeInsets.all(16),
         children: [
           Card(
             child: ListTile(
@@ -605,6 +616,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
         ],
+        ),
       ),
     );
   }

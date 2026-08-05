@@ -35,8 +35,11 @@ class TransactionDetailScreen extends ConsumerWidget {
             child: Text('$e', textAlign: TextAlign.center),
           ),
         ),
-        data: (t) => ListView(
-          padding: const EdgeInsets.all(16),
+        data: (t) => RefreshIndicator(
+          onRefresh: () async =>
+              ref.invalidate(transactionDetailProvider(transactionId)),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
           children: [
             Card(
               child: Padding(
@@ -149,6 +152,7 @@ class TransactionDetailScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

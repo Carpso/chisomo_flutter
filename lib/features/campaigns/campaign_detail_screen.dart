@@ -117,8 +117,11 @@ class _DetailBody extends ConsumerWidget {
     return Column(
       children: [
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: RefreshIndicator(
+            onRefresh: () async =>
+                ref.invalidate(campaignDetailProvider(c.id)),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
               // Cover photos fill the banner edge-to-edge; logos stay centered.
               Container(
@@ -397,6 +400,7 @@ class _DetailBody extends ConsumerWidget {
                   ),
                 ),
             ],
+            ),
           ),
         ),
         SafeArea(

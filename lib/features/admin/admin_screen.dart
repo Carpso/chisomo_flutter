@@ -259,31 +259,35 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Promotion paywall'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Price (K)',
-                  helperText: 'What hosts pay to reach the top-5',
-                  prefixText: 'K ',
-                ),
+        builder: (ctx, setDialogState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: AlertDialog(
+            title: const Text('Promotion paywall'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: priceController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Price (K)',
+                      helperText: 'What hosts pay to reach the top-5',
+                      prefixText: 'K ',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: daysController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Days (1-30)',
+                      helperText: 'How long the promotion stays live',
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: daysController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Days (1-30)',
-                  helperText: 'How long the promotion stays live',
-                ),
-              ),
-            ],
-          ),
+            ),
           actions: [
             TextButton(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
@@ -340,6 +344,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
           ],
         ),
       ),
+      ),
     );
     if (ok == true) await _load();
     priceController.dispose();
@@ -349,18 +354,43 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(
-        leading: const Icon(LucideIcons.settings, color: AppColors.primary),
-        title: const Text('Promotion paywall'),
-        subtitle: _loading
-            ? const Text('Loading…')
-            : Text(
-                'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days • set by the admin',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.settings, color: AppColors.primary),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Promotion paywall',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _loading
+                        ? 'Loading…'
+                        : 'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days • set by the admin',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.textMuted),
+                  ),
+                ],
               ),
-        trailing: OutlinedButton.icon(
-          onPressed: _edit,
-          icon: const Icon(LucideIcons.pencil, size: 15),
-          label: const Text('Edit'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _edit,
+              icon: const Icon(LucideIcons.pencil, size: 15),
+              label: const Text('Edit'),
+            ),
+          ],
         ),
       ),
     );
@@ -418,7 +448,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
               maxLines: 4,
               maxLength: 2000,
               decoration: const InputDecoration(
-                labelText: 'Reply (user is notified by SMS + push)',
+                labelText: 'Reply (user is notified by push; SMS if no app)',
                 alignLabelWithHint: true,
               ),
             ),
@@ -427,10 +457,14 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
                 onPressed: saving ? null : () => Navigator.pop(ctx, false),
                 child: const Text('Cancel'),
               ),
-              FilledButton(
-                onPressed: saving || text.text.trim().isEmpty
-                    ? null
-                    : () async {
+              ListenableBuilder(
+                listenable: text,
+                builder: (context, _) {
+                  final ready = text.text.trim().isNotEmpty;
+                  return FilledButton(
+                    onPressed: saving || !ready
+                        ? null
+                        : () async {
                         setDialogState(() => saving = true);
                         try {
                           await ref.read(apiClientProvider).replySupportTicket(
@@ -456,13 +490,15 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
                           }
                         }
                       },
-                child: saving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Send'),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Send'),
+                  );
+                },
               ),
             ],
           ),

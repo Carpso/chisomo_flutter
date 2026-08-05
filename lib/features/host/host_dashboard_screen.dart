@@ -865,26 +865,30 @@ class _HostCampaignCard extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: AlertDialog(
           title: const Text('Request to delete campaign?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'The admin will review your request. If approved, the campaign will be removed '
-                'from Kingdom Sponsor. Financial records are kept for compliance.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: reason,
-                maxLines: 2,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Reason (optional)',
-                  alignLabelWithHint: true,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'The admin will review your request. If approved, the campaign will be removed '
+                  'from Kingdom Sponsor. Financial records are kept for compliance.',
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  maxLines: 2,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason (optional)',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -927,6 +931,7 @@ class _HostCampaignCard extends ConsumerWidget {
                   : const Text('Send request'),
             ),
           ],
+          ),
         ),
       ),
     );

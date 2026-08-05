@@ -98,8 +98,10 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                     ],
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.all(16),
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
                   children: [
                     Card(
                       child: Padding(
@@ -232,6 +234,7 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                         ),
                       ),
                   ],
+                  ),
                 ),
     );
   }
