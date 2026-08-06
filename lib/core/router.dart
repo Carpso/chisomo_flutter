@@ -6,14 +6,18 @@ import '../features/auth/auth_controller.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/referrals_screen.dart';
 import '../features/auth/settings_screen.dart';
+import '../features/auth/link_action_screen.dart';
+import '../features/auth/linked_account_detail_screen.dart';
 import '../features/campaigns/campaign_detail_screen.dart';
 import '../features/campaigns/campaign_list_screen.dart';
 import '../features/donate/donate_screen.dart';
 import '../features/donate/my_receipts_screen.dart';
+import '../features/airtime/airtime_screen.dart';
 import '../features/donate/pledges_screen.dart';
 import '../features/support/support_screen.dart';
 import '../features/host/create_campaign_screen.dart';
 import '../features/host/host_dashboard_screen.dart';
+import '../features/host/host_badge_screen.dart';
 import '../features/host/promote_screen.dart';
 import '../features/admin/admin_campaigns_screen.dart';
 import '../features/admin/admin_screen.dart';
@@ -43,13 +47,19 @@ class ReferralCode extends Notifier<String?> {
 final referralCodeProvider = NotifierProvider<ReferralCode, String?>(ReferralCode.new);
 
 final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
-      final auth = ref.read(authControllerProvider).value;
-      final loggedIn = auth?.loggedIn ?? false;
+      final authAsync = ref.read(authControllerProvider);
+      // Wait for async auth validation to complete before deciding.
+      // Redirecting during loading causes frequent sign-outs.
+      if (authAsync is AsyncLoading) return null;
+      final loggedIn = authAsync.asData?.value.loggedIn ?? false;
       final onLogin = state.matchedLocation == '/login';
-      if (!loggedIn && !onLogin) return '/login';
+      if (!loggedIn && !onLogin) {
+        ref.read(authControllerProvider.notifier).setSignedOut();
+        return '/login';
+      }
       if (loggedIn && onLogin) return '/';
       final pending = ref.read(pendingDeepLinkProvider);
       if (loggedIn && pending != null) {
@@ -72,13 +82,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/campaign/:id',
-            builder: (context, state) =>
-                CampaignDetailScreen(campaignId: int.parse(state.pathParameters['id']!)),
+            builder: (context, state) => CampaignDetailScreen(
+              campaignId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+            ),
           ),
           GoRoute(
             path: '/donate/:id',
             builder: (context, state) =>
-                DonateScreen(campaignId: int.parse(state.pathParameters['id']!)),
+                DonateScreen(campaignId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0),
           ),
           GoRoute(
             path: '/pledges',
@@ -96,21 +107,56 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings/referrals',
             builder: (context, state) => const ReferralsScreen(),
           ),
-          GoRoute(
-            path: '/settings/support',
-            builder: (context, state) => const SupportScreen(),
-          ),
+           GoRoute(
+             path: '/settings/support',
+             builder: (context, state) => const SupportScreen(),
+           ),
+           GoRoute(
+             path: '/settings/links/:id/accept',
+             builder: (context, state) => const LinkActionScreen(),
+           ),
+            GoRoute(
+              path: '/settings/links/:id/reject',
+              builder: (context, state) => const LinkActionScreen(),
+            ),
+            GoRoute(
+              path: '/settings/links/:id/detail',
+              builder: (context, state) => LinkedAccountDetailScreen(
+                linkId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+              ),
+            ),
           GoRoute(
             path: '/host',
             builder: (context, state) => const HostDashboardScreen(),
           ),
           GoRoute(
             path: '/host/create',
-            builder: (context, state) => const CreateCampaignScreen(),
+            builder: (context, state) {
+              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              return const CreateCampaignScreen();
+            },
+          ),
+          GoRoute(
+            path: '/host/edit/:id',
+            builder: (context, state) {
+              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              final campaignId = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+              return CreateCampaignScreen(campaignId: campaignId);
+            },
           ),
           GoRoute(
             path: '/host/promote',
             builder: (context, state) => const PromoteScreen(),
+          ),
+          GoRoute(
+            path: '/airtime',
+            builder: (context, state) => const AirtimeScreen(),
+          ),
+          GoRoute(
+            path: '/host/badge',
+            builder: (context, state) => const HostBadgeScreen(),
           ),
           GoRoute(
             path: '/admin',
@@ -134,7 +180,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return TransactionDetailScreen(
-                transactionId: int.parse(state.pathParameters['id']!),
+                transactionId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
               );
             },
           ),
@@ -159,4 +205,14 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
     debugLogDiagnostics: false,
   );
+
+  // Deep links that arrive while the app is already open won't re-trigger the
+  // router's redirect by themselves, so navigate explicitly once signed in.
+  ref.listen(pendingDeepLinkProvider, (prev, next) {
+    if (next == null) return;
+    final loggedIn = ref.read(authControllerProvider).value?.loggedIn ?? false;
+    if (loggedIn) router.go(next);
+  });
+
+  return router;
 });

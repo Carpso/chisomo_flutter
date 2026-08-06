@@ -7,8 +7,10 @@ import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/avatar.dart';
-import '../../core/widgets/countdown_banner.dart';
+import '../../core/widgets/info_badge.dart';
+import '../auth/auth_controller.dart';
 import 'campaigns_controller.dart';
 import 'campaign_image.dart';
 import 'models.dart';
@@ -34,6 +36,21 @@ class CampaignDetailScreen extends ConsumerWidget {
               final detailValue = detail.value;
               if (detailValue == null) return;
               await showShareSheet(context, ref, detailValue.campaign);
+            },
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final isAdmin = ref.watch(authControllerProvider).value?.isAdmin ?? false;
+              if (!isAdmin) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(LucideIcons.pencil),
+                tooltip: 'Edit campaign',
+                onPressed: () {
+                  final detailValue = detail.value;
+                  if (detailValue == null) return;
+                  context.push('/host/edit/${detailValue.campaign.id}');
+                },
+              );
             },
           ),
         ],
@@ -121,8 +138,33 @@ class _DetailBody extends ConsumerWidget {
             onRefresh: () async =>
                 ref.invalidate(campaignDetailProvider(c.id)),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
             children: [
+              if (c.status == 'deleted') ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.shieldAlert, size: 18, color: AppColors.danger),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This campaign was removed by the administrator.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               // Cover photos fill the banner edge-to-edge; logos stay centered.
               Container(
                 height: 200,
@@ -181,7 +223,32 @@ class _DetailBody extends ConsumerWidget {
               Text(c.description, style: theme.textTheme.bodyMedium),
               if (c.endsAt != null) ...[
                 const SizedBox(height: 12),
-                CountdownBanner(endsAt: DateTime.parse(c.endsAt!)),
+                CountdownBadge(endsAt: DateTime.tryParse(c.endsAt!)),
+              ],
+              if (c.shareUrl != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.textMuted.withValues(alpha: 0.2)),
+                        ),
+                        child: Text(
+                          c.shareUrl!,
+                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    CopyButton(text: c.shareUrl!, label: 'Copy'),
+                  ],
+                ),
               ],
               const SizedBox(height: 20),
               Card(
@@ -286,9 +353,25 @@ class _DetailBody extends ConsumerWidget {
               ),
               if (detail.leaderboard.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                Text(
-                  'Top supporters',
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                Row(
+                  children: [
+                    Text(
+                      'Top supporters',
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 6),
+                    InfoBadge(
+                      title: 'Top supporters',
+                      text:
+                          'Everyone who has given to this campaign, ordered by total amount donated. '
+                          'Donations with a hidden amount stay private and do not appear here.',
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${detail.leaderboard.length}',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Card(
@@ -303,7 +386,7 @@ class _DetailBody extends ConsumerWidget {
                             decoration: BoxDecoration(
                               color: i == 0
                                   ? AppColors.gold.withValues(alpha: 0.2)
-                                  : AppColors.primary.withValues(alpha: 0.08),
+                                  : AppColors.accentFor(i).withValues(alpha: 0.12),
                               shape: BoxShape.circle,
                             ),
                             alignment: Alignment.center,
@@ -312,7 +395,9 @@ class _DetailBody extends ConsumerWidget {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: i == 0 ? const Color(0xFF8A6A00) : AppColors.primary,
+                                color: i == 0
+                                    ? const Color(0xFF8A6A00)
+                                    : AppColors.accentFor(i),
                               ),
                             ),
                           ),
@@ -320,9 +405,13 @@ class _DetailBody extends ConsumerWidget {
                             detail.leaderboard[i].username,
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
+                          subtitle: detail.leaderboard[i].tier.isEmpty
+                              ? null
+                              : Text(detail.leaderboard[i].tier),
                           trailing: Text(
                             formatKwacha(detail.leaderboard[i].totalCents),
-                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ),
                     ],
@@ -421,14 +510,27 @@ class _DetailBody extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: () => context.push('/donate/${c.id}'),
-                    icon: const Icon(LucideIcons.heartHandshake),
-                    label: const Text('Donate now'),
-                  ),
+                  child: c.status == 'deleted'
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Campaign closed',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        )
+                      : ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: () => context.push('/donate/${c.id}'),
+                          icon: const Icon(LucideIcons.heartHandshake),
+                          label: const Text('Donate now'),
+                        ),
                 ),
               ],
             ),
@@ -449,12 +551,18 @@ class _AnnouncementsSection extends ConsumerStatefulWidget {
 }
 
 class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
-  late final Future<List<dynamic>> _future;
+  late Future<List<dynamic>> _future;
 
   @override
   void initState() {
     super.initState();
     _future = ref.read(apiClientProvider).getAnnouncements(widget.campaignId);
+  }
+
+  void _retry() {
+    setState(() {
+      _future = ref.read(apiClientProvider).getAnnouncements(widget.campaignId);
+    });
   }
 
   @override
@@ -465,10 +573,27 @@ class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
       future: _future,
       builder: (context, snapshot) {
         final items = snapshot.data ?? const [];
-        if (snapshot.hasData && items.isEmpty) return const SizedBox.shrink();
         if (snapshot.connectionState == ConnectionState.waiting && items.isEmpty) {
           return const SizedBox.shrink();
         }
+        if (snapshot.hasError && items.isEmpty) {
+          return Row(
+            children: [
+              const Icon(LucideIcons.megaphone, size: 18, color: AppColors.textMuted),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Could not load updates from the host.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+                ),
+              ),
+              TextButton(onPressed: _retry, child: const Text('Retry')),
+            ],
+          );
+        }
+        if (snapshot.hasData && items.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

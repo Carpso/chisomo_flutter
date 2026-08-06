@@ -80,36 +80,16 @@ body: campaigns.when(
                           ),
                         ),
                       ),
-                     const SliverToBoxAdapter(child: HomeCarousel()),
-                     const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                     if (items.isEmpty)
-                       const SliverToBoxAdapter(
-                         child: Padding(
-                           padding: EdgeInsets.all(40),
-                           child: Column(
-                             children: [
-                               Icon(LucideIcons.tent, size: 48, color: AppColors.textMuted),
-                               SizedBox(height: 16),
-                               Text('No campaigns yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
-                               SizedBox(height: 8),
-                               Text('Check back later for new fundraisers!', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted)),
-                             ],
-                           ),
-                         ),
-                       )
-                     else
-                       SliverList(
-                         delegate: SliverChildBuilderDelegate(
-                           (context, i) => _CampaignCard(
-                               campaign: items[i],
-                               isTrending: items[i].id == trendId),
-                           childCount: items.length,
-                         ),
-                       ),
-                     // Bottom spacing so last card isn't flush with screen edge or hidden by FAB
-                     SliverToBoxAdapter(
-                       child: SizedBox(height: isApprovedHost ? 100 : 24),
-                     ),
+                    const SliverToBoxAdapter(child: HomeCarousel()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => _CampaignCard(
+                            campaign: items[i],
+                            isTrending: items[i].id == trendId),
+                        childCount: items.length,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -335,6 +315,244 @@ class _ErrorRetry extends StatelessWidget {
            ],
           ),
         ),
+    );
+  }
+}
+  const _EventUseCasesBanner();
+
+  static const _events = [
+    ('Chilanga Mulilo', LucideIcons.flame),
+    ('Wedding', LucideIcons.heart),
+    ('BuyMeCoffee', LucideIcons.coffee),
+    ('Trip', LucideIcons.plane),
+    ('Committee Contributions', LucideIcons.users),
+    ('Monthly Contributions', LucideIcons.calendar),
+    ('Church Offerings', LucideIcons.church),
+    ('Any Contribution', LucideIcons.hand),
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.tent, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Raise funds for any event',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isAdmin =
+                        ref.watch(authControllerProvider).value?.isAdmin ??
+                            false;
+                    if (!isAdmin) return const SizedBox.shrink();
+                    return IconButton(
+                      icon: const Icon(LucideIcons.pencil,
+                          size: 16, color: AppColors.primary),
+                      tooltip: 'Edit event types',
+                      onPressed: () => _editEventTypes(context),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                for (final (name, icon) in _events)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _editEventTypes(BuildContext context) {
+  final controller = TextEditingController();
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Edit event types'),
+      content: TextField(
+        controller: controller,
+        maxLines: 4,
+        decoration: const InputDecoration(
+          hintText: 'Comma-separated: Chilanga Mulilo, Wedding, Trip…',
+          alignLabelWithHint: true,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Event types updated. Restart the app to see changes.')),
+            );
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Banner showing the current SMS network status.
+/// Superadmins can edit the text from the admin dashboard.
+class _MtnStatusBanner extends ConsumerWidget {
+  const _MtnStatusBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.06),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.phone, size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'SMS verification is currently available for Airtel and Zamtel numbers. '
+              'MTN OTP delivery is temporarily unavailable — we are working on it.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textDark,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner for buying airtime for someone you love.
+class _AirtimeComingSoonBanner extends ConsumerWidget {
+  const _AirtimeComingSoonBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.08),
+            AppColors.gold.withValues(alpha: 0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.gold.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.phoneCall, size: 18, color: AppColors.gold),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Buy airtime for someone you love',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.gold.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Coming soon',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.gold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Top up mobile airtime for any Airtel or Zamtel number in Zambia — '
+            'instantly, with no app needed on their end. Perfect for '
+            'birthdays, emergencies, or just because. '
+            'Commissions go to worthy causes, no fees to the recipient.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textMuted,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

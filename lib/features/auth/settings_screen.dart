@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/avatar.dart';
+import '../../core/widgets/info_badge.dart';
 import '../../core/widgets/phone_field.dart';
 import '../campaigns/campaigns_controller.dart';
 import 'auth_controller.dart';
@@ -24,10 +25,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ('family', 'Family'),
     ('couple', 'Couple'),
     ('team', 'Team'),
+    ('friend', 'Friend'),
   ];
 
   bool _busy = false;
   bool _linksBusy = false;
+  bool _notificationsEnabled = true;
   String? _error;
   List<dynamic> _links = [];
   final Set<int> _pendingAction = {};
@@ -43,6 +46,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void initState() {
     super.initState();
     _fetchLinks();
+    _loadNotificationSetting();
+  }
+
+  Future<void> _loadNotificationSetting() async {
+    try {
+      final enabled = await ref.read(apiClientProvider).getNotificationsEnabled();
+      if (mounted) setState(() => _notificationsEnabled = enabled);
+    } catch (_) {}
+  }
+
+  Future<void> _setNotifications(bool enabled) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(apiClientProvider).setNotificationsEnabled(enabled);
+      if (mounted) setState(() => _notificationsEnabled = enabled);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update notification settings.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _linkAccount() async {
@@ -418,17 +445,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: 8),
           Card(
             child: ListTile(
-              leading: const Icon(LucideIcons.logOut, color: AppColors.primary),
-              title: const Text('Sign out'),
-              onTap: _busy
-                  ? null
-                  : () async {
-                      await ref.read(authControllerProvider.notifier).logout();
-                      if (!mounted) return;
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) context.go('/login');
-                      });
-                    },
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: const Icon(LucideIcons.bell, color: AppColors.primary),
+              title: const Text('Push notifications'),
+              subtitle: const Text('Donation confirmations, new donors, campaign updates'),
+              trailing: Switch(
+                value: _notificationsEnabled,
+                onChanged: _busy ? null : (v) => _setNotifications(v),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -438,8 +462,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                'Family & groups',
+                'Family & friends',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              InfoBadge(
+                title: 'Family & friends',
+                text:
+                    'Link family, couple, friend or team accounts to pool your giving. '
+                    'When you link, both sides can see the combined amount you have '
+                    'all given, share monthly reminder pledges, and your combined '
+                    'donor badge grows faster together. The other person gets an SMS '
+                    'with a link to accept your request — nothing links until they agree.',
               ),
               OutlinedButton.icon(
                 onPressed: _linksBusy ? null : _linkAccount,
@@ -456,7 +489,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Link family or group accounts to see their contributions together.',
+            'Link family, friends, couple or team accounts to see your combined giving. '
+            'The other person must accept before the link activates.',
             style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),
           const SizedBox(height: 8),
@@ -475,6 +509,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   for (final link in _links)
                     ListTile(
                       dense: true,
+                      onTap: () => context.push('/settings/links/${link['id']}/detail'),
                       leading: CircleAvatar(
                         backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                         child: Text(
@@ -600,6 +635,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : null,
             ),
           ),
+          const SizedBox(height: 24),
+          Card(
+            child: ListTile(
+              leading: const Icon(LucideIcons.logOut, color: AppColors.primary),
+              title: const Text('Sign out'),
+              onTap: _busy
+                  ? null
+                  : () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Sign out?'),
+                          content: const Text('You will need to verify your phone number again to sign back in.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Sign out'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true) return;
+                      await ref.read(authControllerProvider.notifier).logout();
+                      if (!mounted) return;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) context.go('/login');
+                      });
+                    },
+            ),
+          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 16),
@@ -611,7 +680,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           const SizedBox(height: 24),
           Text(
-            'Kingdom Sponsor v0.4.0',
+            'Kingdom Sponsor v0.4.1',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
           ),

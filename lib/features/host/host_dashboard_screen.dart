@@ -30,6 +30,18 @@ class HostDashboardScreen extends ConsumerWidget {
             icon: const Icon(LucideIcons.logOut),
             tooltip: 'Sign out',
             onPressed: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sign out?'),
+                  content: const Text('You will need to verify your phone number again to sign back in.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sign out')),
+                  ],
+                ),
+              );
+              if (confirmed != true) return;
               await ref.read(authControllerProvider.notifier).logout();
               if (context.mounted) context.go('/login');
             },
@@ -57,7 +69,9 @@ class HostDashboardScreen extends ConsumerWidget {
         data: (data) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(hostProvider),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(16).copyWith(
+              bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
             children: [
               Card(
                 child: Padding(
@@ -579,6 +593,10 @@ class _HostCampaignCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final available = campaign.availableCents ?? 0;
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
+    // Calculate effective payout after Lipila + platform fees
+    final lipilaFee = (available * 1.5 / 100).round();
+    final platformFee = [300, (available * 1 / 100).round()].reduce((a, b) => a > b ? a : b);
+    final netPayout = available - lipilaFee - platformFee;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -608,8 +626,7 @@ class _HostCampaignCard extends ConsumerWidget {
                         : AppColors.textMuted.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  padding: const EdgeInsets.all(4),
-                  child: CampaignImage(campaign: campaign, fit: BoxFit.contain),
+                  child: CampaignImage(campaign: campaign, fit: BoxFit.cover),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -721,6 +738,28 @@ class _HostCampaignCard extends ConsumerWidget {
                     onPressed: canWithdraw
                         ? () async {
                             final messenger = ScaffoldMessenger.of(context);
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Confirm withdrawal'),
+                                content: Text(
+                                  'Send ${formatKwacha(available)} to the mobile money number '
+                                  'linked to your account?',
+                                  style: const TextStyle(height: 1.5),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('Withdraw'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirmed != true || !context.mounted) return;
                             final res = await ref
                                 .read(hostProvider.notifier)
                                 .withdraw(campaign.id);
@@ -734,7 +773,7 @@ class _HostCampaignCard extends ConsumerWidget {
                     icon: const Icon(LucideIcons.send, size: 16),
                     label: Text(
                       canWithdraw
-                          ? 'Withdraw ${formatKwacha(available)}'
+                          ? 'Withdraw ${formatKwacha(netPayout)}'
                           : 'Min ${formatKwacha(campaign.minWithdrawCents ?? 0)}',
                       style: const TextStyle(fontSize: 13),
                     ),
@@ -745,6 +784,31 @@ class _HostCampaignCard extends ConsumerWidget {
                   OutlinedButton.icon(
                     onPressed: () async {
                       final messenger = ScaffoldMessenger.of(context);
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('End this campaign?'),
+                          content: const Text(
+                            'New donations will be blocked. Existing donors and the '
+                            'remaining balance stay available for withdrawal.',
+                            style: TextStyle(height: 1.5),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppColors.danger,
+                              ),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('End campaign'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !context.mounted) return;
                       final res = await ref
                           .read(hostProvider.notifier)
                           .endCampaign(campaign.id);

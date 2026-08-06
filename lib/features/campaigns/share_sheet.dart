@@ -27,12 +27,21 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
   final auth = ref.read(authControllerProvider).value;
   final refParam = auth != null ? await _refQuery(api) : null;
   final refSuffix = refParam == null ? '' : '?ref=$refParam';
-  final url = '${api.shareUrl(campaign.id)}$refSuffix';
+  // Prefer the API-provided (possibly short/masked) share URL. When a referral
+  // tag is attached it is appended to the long URL because Bitly links do not
+  // forward extra query parameters.
+  final baseUrl = refParam == null
+      ? (campaign.shareUrl ?? api.shareUrl(campaign.id))
+      : api.shareUrl(campaign.id);
+  final url = '$baseUrl$refSuffix';
   final deepLink = '${api.deepLink(campaign.id)}$refSuffix';
   final playStore = ApiClient.playStoreUrl;
   final text =
-      '${campaign.title}\n${campaign.description}\nGive here: $url\nNo app yet? Get Kingdom Sponsor: $playStore';
-  final waUrl = 'https://wa.me/?text=${Uri.encodeComponent(text)}';
+      '${campaign.title}\n${campaign.description}\n${campaign.donorCount == 0 ? '' : '${campaign.donorCount} donors • '}${campaign.raisedLabel} raised\n\nGive here: $url\nOpen in app: $deepLink\nNo app? Get Kingdom Sponsor: $playStore';
+  final image = campaign.logoUrl ?? campaign.imageUrl;
+  final waUrl = image != null
+      ? 'https://wa.me/?text=${Uri.encodeComponent(text)}&media=$image'
+      : 'https://wa.me/?text=${Uri.encodeComponent(text)}';
 
   if (!context.mounted) return;
   await showModalBottomSheet<void>(
@@ -101,6 +110,28 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
               },
               icon: const Icon(LucideIcons.smartphone, size: 18),
               label: const Text('Open in app'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.08),
+              ),
+              onPressed: () async {
+                final donateDeep = '${api.deepLink(campaign.id)}$refSuffix'.replaceFirst('campaign', 'donate');
+                if (!await launchUrl(Uri.parse(donateDeep), mode: LaunchMode.externalApplication)) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Open the app from the Play Store first, then use the donate button.')),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(LucideIcons.wallet, size: 18),
+              label: Text(
+                'Donate now',
+                style: TextStyle(color: AppColors.primary),
+              ),
             ),
             const SizedBox(height: 10),
             TextButton.icon(

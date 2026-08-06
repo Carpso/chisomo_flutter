@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
 import '../../core/router.dart';
+import '../../core/session_store.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/phone_field.dart';
@@ -29,6 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   DateTime? _lastOtpRequest;
   Timer? _cooldownTimer;
   static const _otpCooldown = Duration(seconds: 30);
+  bool _hadStoredSession = false;
 
   bool get _canSendOtp =>
       _lastOtpRequest == null ||
@@ -51,6 +55,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _cooldownTimer = null;
       }
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStoredSession();
+  }
+
+  Future<void> _checkStoredSession() async {
+    final session = await SessionStore.read();
+    if (mounted) setState(() => _hadStoredSession = session != null && session.isNotEmpty);
   }
 
   @override
@@ -98,11 +113,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     final referral = ref.read(referralCodeProvider);
     try {
-      await ref
+      final isNewUser = await ref
           .read(authControllerProvider.notifier)
           .verifyOtp(_phoneE164, _otpController.text.trim(), referralCode: referral);
       ref.read(referralCodeProvider.notifier).set(null);
-      if (mounted) {
+      if (mounted && isNewUser) {
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
@@ -125,6 +140,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
         );
+      } else if (mounted) {
+        context.go('/');
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -137,7 +154,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authControllerProvider);
+    // Only show signed-out modal if there was a stored session that expired
+    // (not for new users who never signed in)
+    final authValue = auth.value;
+    final showSignedOutModal = authValue?.signedOut == true && authValue?.token == null && _hadStoredSession;
+    if (showSignedOutModal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Session expired'),
+              content: const Text(
+                'Your session has expired. Please sign in again to continue.',
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    ref.read(authControllerProvider.notifier).clearSignedOut();
+                  },
+                  child: const Text('Sign in'),
+                ),
+              ],
+            ),
+          );
+        }
+        ref.read(authControllerProvider.notifier).clearSignedOut();
+      });
+    }
+
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -149,14 +199,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(20).copyWith(
+                bottom: 20 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
               child: Card(
                 elevation: 6,
                 shadowColor: Colors.black12,
                 color: AppColors.surface,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,7 +256,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             .bodyMedium
                             ?.copyWith(color: AppColors.textMuted),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 12),
+                      // SMS network status notice
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.info, size: 14, color: AppColors.gold),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'SMS verification works on Airtel & Zamtel. MTN OTP is temporarily unavailable.',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textDark,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       if (!_otpSent)
                         PhoneField(
                           onChanged: (e164) => _phoneE164 = e164,
@@ -213,9 +290,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ...[
                           TextField(
                             controller: _otpController,
+                            autofocus: true,
                             keyboardType: TextInputType.number,
                             maxLength: 6,
                             textAlign: TextAlign.center,
+                            autofillHints: const [AutofillHints.oneTimeCode],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            onChanged: (value) {
+                              if (value.trim().length == 6 && !_submitting) {
+                                _verify();
+                              }
+                            },
                             style: const TextStyle(fontSize: 28, letterSpacing: 12, fontWeight: FontWeight.w700),
                             decoration: const InputDecoration(
                               counterText: '',
@@ -223,7 +310,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               prefixIcon: Icon(LucideIcons.shieldCheck),
                             ),
                           ),
-                          if (_debugCode != null)
+                          if (!kReleaseMode && _debugCode != null)
                             Container(
                               margin: const EdgeInsets.only(top: 16),
                               padding: const EdgeInsets.all(16),

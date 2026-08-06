@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 
@@ -265,39 +266,52 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                     children: [
                       Card(
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                          child: Row(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Padding(
-                                padding: EdgeInsets.only(top: 2),
-                                child: Icon(LucideIcons.headphones,
-                                    color: AppColors.primary),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Icon(LucideIcons.headphones,
+                                        color: AppColors.primary),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Need help?',
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(fontWeight: FontWeight.w700),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Send a message to the admin and we will reply here and by SMS.',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(color: AppColors.textMuted),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Need help?',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(fontWeight: FontWeight.w700),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Send a message to the admin and we will reply here and by SMS.',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(color: AppColors.textMuted),
-                                    ),
-                                  ],
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: _compose,
+                                  icon: const Icon(LucideIcons.plus, size: 16),
+                                  label: const Text('New request'),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              FilledButton.icon(
-                                onPressed: _compose,
-                                icon: const Icon(LucideIcons.plus, size: 16),
-                                label: const Text('New request'),
                               ),
                             ],
                           ),
@@ -394,7 +408,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                                   Row(
                                     children: [
                                       Text(
-                                        '${(t['createdAt'] ?? '').toString().substring(0, 10)} • '
+                                        '${safeDate(t['createdAt'])} • '
                                         '${_statusLabel(t['status'] ?? '')}',
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(color: AppColors.textMuted),

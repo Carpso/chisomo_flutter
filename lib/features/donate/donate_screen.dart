@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/money.dart';
@@ -14,6 +13,8 @@ import '../../core/widgets/phone_field.dart';
 import '../auth/auth_controller.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
+
+import '../../core/receipt_service.dart';
 
 /// Returns the USSD short code for mobile money prompts on the donor's phone.
 /// Lipila triggers the payment prompt via the carrier's mobile money gateway.
@@ -60,6 +61,8 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     super.initState();
     final auth = ref.read(authControllerProvider).value;
     if (auth?.phone != null) _phoneE164 = auth!.phone!;
+    _nameController.addListener(() => setState(() {}));
+    _amountController.addListener(() => setState(() {}));
   }
 
   @override
@@ -72,7 +75,22 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   int get _amountCents {
     if (_selectedPreset > 0) return _selectedPreset;
-    return (double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0).round() * 100;
+    final text = _amountController.text.replaceAll(',', '').trim();
+    final kwacha = double.tryParse(text) ?? 0;
+    return (kwacha * 100).round();
+  }
+
+  /// Calculate total fees (platform + mobile money) for the current amount.
+  ({int platformFee, int lipilaFee, int totalFee, int totalPay}) _calculateFees(FeesInfo? cfg) {
+    final amount = _amountCents;
+    if (amount < 100) return (platformFee: 0, lipilaFee: 0, totalFee: 0, totalPay: 0);
+    final platformPct = cfg?.platformPct ?? 1;
+    final platformMin = cfg?.platformMinFeeCents ?? 300;
+    final fixedFee = 24; // ZMW 0.24
+    final momoPct = cfg?.momoPct ?? 2.5;
+    final platformFee = [platformMin + fixedFee, (amount * platformPct / 100).round() + fixedFee].reduce((a, b) => a > b ? a : b);
+    final lipilaFee = (amount * momoPct / 100).round();
+    return (platformFee: platformFee, lipilaFee: lipilaFee, totalFee: platformFee + lipilaFee, totalPay: amount + platformFee + lipilaFee);
   }
 
   static int? _suggested(int avgCents) {
@@ -90,7 +108,10 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     }
     final phone = _phoneE164;
     if (phone.isEmpty) {
-      setState(() => _error = 'Enter your mobile number so we can send you a payment prompt');
+      setState(
+        () => _error =
+            'Enter your mobile number so we can send you a payment prompt',
+      );
       return;
     }
 
@@ -99,16 +120,15 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
       _error = null;
     });
     try {
-      final res = await ref.read(apiClientProvider).post(
-            '/api/campaigns/${widget.campaignId}/contribute',
-            {
-              'amountCents': amountCents,
-              'phone': phone,
-              'donorName': _anonymous ? null : _nameController.text.trim(),
-              'isAnonymous': _anonymous,
-              'hideAmount': _hideAmount,
-            },
-          );
+      final res = await ref
+          .read(apiClientProvider)
+          .post('/api/campaigns/${widget.campaignId}/contribute', {
+            'amountCents': amountCents,
+            'phone': phone,
+            'donorName': _anonymous ? null : _nameController.text.trim(),
+            'isAnonymous': _anonymous,
+            'hideAmount': _hideAmount,
+          });
       setState(() {
         _referenceId = res['referenceId'] as String;
         _phase = _Phase.awaitingPin;
@@ -164,7 +184,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           if (mounted) {
             if (_recurring) {
               try {
-                await ref.read(apiClientProvider).createPledge(
+                await ref
+                    .read(apiClientProvider)
+                    .createPledge(
                       widget.campaignId,
                       _amountCents,
                       _recurringDay,
@@ -186,18 +208,37 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(title: const Text('Give')),
       body: switch (_phase) {
         _Phase.form => _buildForm(context),
-       _Phase.awaitingPin => _AwaitingPin(
-              referenceId: _referenceId ?? '',
-              phoneE164: _phoneE164,
-              onResend: _resendPrompt,
-            ),
+        _Phase.awaitingPin => _AwaitingPin(
+          referenceId: _referenceId ?? '',
+          phoneE164: _phoneE164,
+          onResend: _resendPrompt,
+        ),
         _Phase.done => _buildDone(context),
         _Phase.failed => _buildFailed(context),
       },
     );
+  }
+
+  /// Shows the exact name this donor will appear under on the donor list:
+  /// "Anonymous", their typed name, or their account username/display name.
+  String _donorListLabel() {
+    if (_anonymous) return 'You\'ll appear as Anonymous on the donor list.';
+    final typed = _nameController.text.trim();
+    if (typed.isNotEmpty) return 'You\'ll appear on the donor list as $typed.';
+    final auth = ref.watch(authControllerProvider).value;
+    final username = auth?.username?.trim();
+    if (username != null && username.isNotEmpty) {
+      return 'You\'ll appear on the donor list as $username.';
+    }
+    final name = auth?.name?.trim();
+    if (name != null && name.isNotEmpty) {
+      return 'You\'ll appear on the donor list as $name.';
+    }
+    return 'You\'ll appear on the donor list with your account name.';
   }
 
   Widget _buildForm(BuildContext context) {
@@ -207,7 +248,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     final suggested = _suggested(avg);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16).copyWith(
+        bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
       children: [
         if (suggested != null)
           Padding(
@@ -222,15 +265,24 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
                   _amountController.text = '${suggested ~/ 100}';
                 }),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.lightbulb, size: 18, color: Color(0xFF8A6A00)),
+                      const Icon(
+                        LucideIcons.lightbulb,
+                        size: 18,
+                        color: Color(0xFF8A6A00),
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           'Most people give around ${formatKwacha(suggested)}. Tap to match the average.',
-                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textDark),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textDark,
+                          ),
                         ),
                       ),
                     ],
@@ -241,7 +293,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           ),
         Text(
           'Choose an amount',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -282,6 +336,51 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         ],
         if (_selectedPreset > 0) _buildFeeBreakdown(context, detail?.fees),
         const SizedBox(height: 20),
+        // Fee preview card
+        if (_amountCents >= 100)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Donation', style: TextStyle(color: AppColors.textMuted)),
+                    Text(formatKwacha(_amountCents), style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Platform fees', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    Text('+${formatKwacha(_calculateFees(detail?.fees).platformFee)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Mobile money fee', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    Text('+${formatKwacha(_calculateFees(detail?.fees).lipilaFee)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ],
+                ),
+                const Divider(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('You will pay', style: TextStyle(fontWeight: FontWeight.w700)),
+                    Text(formatKwacha(_calculateFees(detail?.fees).totalPay), style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 12),
         TextField(
           controller: _nameController,
           decoration: const InputDecoration(
@@ -313,7 +412,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Give every month (reminder)'),
-          subtitle: const Text('Get an SMS on the same day each month to give again'),
+          subtitle: const Text(
+            'Get an SMS on the same day each month to give again',
+          ),
           value: _recurring,
           onChanged: (v) => setState(() => _recurring = v),
         ),
@@ -340,13 +441,18 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           ),
           child: Row(
             children: [
-              const Icon(LucideIcons.sparkles, size: 18, color: AppColors.primary),
+              const Icon(
+                LucideIcons.sparkles,
+                size: 18,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'You\'ll appear on the donor list with a fun giver name, like '
-                  'GenerousGiver664',
-                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textDark),
+                  _donorListLabel(),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textDark,
+                  ),
                 ),
               ),
             ],
@@ -355,18 +461,24 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(_error!, style: const TextStyle(color: AppColors.danger)),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: AppColors.danger),
+            ),
           ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
           onPressed: (_submitting || _amountCents < 100) ? null : _donate,
           icon: const Icon(LucideIcons.heartHandshake),
           label: _submitting
-               ? SizedBox(
-                   width: 22, height: 22,
-                   child: AppIconSpinner(size: 22, color: Colors.white),
-                 )
-              : Text('Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}'),
+              ? SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: AppIconSpinner(size: 22, color: Colors.white),
+                )
+              : Text(
+                  'Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}',
+                ),
         ),
         const SizedBox(height: 8),
         _buildFeeNote(context, detail?.fees),
@@ -378,10 +490,13 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     final theme = Theme.of(context);
     final amountCents = _amountCents;
     if (fees == null || amountCents < 100) return const SizedBox.shrink();
-    final platform =
-        math.max(fees.platformMinFeeCents, (amountCents * fees.platformPct / 100).round());
+    final platform = math.max(
+      fees.platformMinFeeCents,
+      (amountCents * fees.platformPct / 100).round(),
+    );
     final momo = (amountCents * fees.momoPct / 100).round();
-    final total = amountCents + platform + momo;
+    final platformFees = platform + fees.platformFixedFeeCents + momo;
+    final total = amountCents + platformFees;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
@@ -394,12 +509,16 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         children: [
           Text(
             'You will pay ${formatKwacha(total)}',
-            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            '${formatKwacha(amountCents)} donation + ${formatKwacha(platform)} platform fee + ${formatKwacha(momo)} mobile money',
-            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            '${formatKwacha(amountCents)} donation + ${formatKwacha(platformFees)} platform fees',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textMuted,
+            ),
           ),
         ],
       ),
@@ -410,7 +529,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     final theme = Theme.of(context);
     final text = fees == null
         ? 'A small platform fee and mobile money charges apply. You will get a payment prompt on your phone.'
-        : 'A platform fee of ${formatKwacha(fees.platformMinFeeCents)} minimum (${formatPct(fees.platformPct)} above that) plus ${formatPct(fees.momoPct)} mobile money applies. You will get a payment prompt on your phone.';
+        : 'Platform fees (platform ${formatKwacha(fees.platformMinFeeCents)} minimum '
+              '(${formatPct(fees.platformPct)} above that) + ZMW 0.2400 + Lipila charges) apply. '
+              'You will get a payment prompt on your phone.';
     return Text(
       text,
       textAlign: TextAlign.center,
@@ -419,47 +540,71 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   }
 
   Widget _buildDone(BuildContext context) {
+    final theme = Theme.of(context);
+    final contributionId = _contributionId;
+    final receiptState = contributionId == null
+        ? null
+        : ref.watch(receiptControllerProvider)[contributionId];
+    final isDownloaded = receiptState?.isDownloaded ?? false;
+    final isBusy =
+        (receiptState?.isLoading ?? false) ||
+        (receiptState?.isOpening ?? false);
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(LucideIcons.badgeCheck, size: 72, color: AppColors.primary),
+            const Icon(
+              LucideIcons.badgeCheck,
+              size: 72,
+              color: AppColors.primary,
+            ),
             const SizedBox(height: 16),
             Text(
               'Thank you!',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Your donation is confirmed. The host has been notified and the funds will reach them quickly.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textMuted,
+              ),
             ),
             const SizedBox(height: 24),
-            if (_contributionId != null) ...[
+            if (contributionId != null) ...[
               OutlinedButton.icon(
-                onPressed: () async {
-                  final url = ref
-                      .read(apiClientProvider)
-                      .receiptUrl(_contributionId!);
-                  final uri = Uri.parse(url);
-                  final messenger = ScaffoldMessenger.of(context);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } else {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('Could not open receipt')),
-                    );
-                  }
-                },
-                icon: const Icon(LucideIcons.download, size: 18),
-                label: const Text('Download receipt'),
+                onPressed: isBusy
+                    ? null
+                    : () => ref
+                          .read(receiptControllerProvider.notifier)
+                          .downloadThenView(context, ref, contributionId),
+                icon: isBusy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        isDownloaded ? LucideIcons.eye : LucideIcons.download,
+                        size: 18,
+                      ),
+                label: Text(
+                  isDownloaded
+                      ? 'Open receipt'
+                      : (isBusy ? 'Downloading…' : 'Download receipt'),
+                ),
               ),
               const SizedBox(height: 12),
             ],
-            ElevatedButton(onPressed: () => context.go('/'), child: const Text('Back to campaigns')),
+            ElevatedButton(
+              onPressed: () => context.go('/'),
+              child: const Text('Back to campaigns'),
+            ),
           ],
         ),
       ),
@@ -477,7 +622,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             const SizedBox(height: 16),
             Text(
               'Payment not completed',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             Text(
@@ -501,7 +648,11 @@ class _AwaitingPin extends ConsumerWidget {
   final String phoneE164;
   final VoidCallback onResend;
 
-  const _AwaitingPin({required this.referenceId, required this.phoneE164, required this.onResend});
+  const _AwaitingPin({
+    required this.referenceId,
+    required this.phoneE164,
+    required this.onResend,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -513,15 +664,17 @@ class _AwaitingPin extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-             const SizedBox(
-                width: 56,
-                height: 56,
-                child: AppIconSpinner(size: 56),
-              ),
+            const SizedBox(
+              width: 56,
+              height: 56,
+              child: AppIconSpinner(size: 56),
+            ),
             const SizedBox(height: 24),
             Text(
               'Check your phone',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -531,7 +684,9 @@ class _AwaitingPin extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(
               'If you don\'t see it, dial $ussd on your phone.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 16),
             OutlinedButton.icon(
@@ -542,7 +697,9 @@ class _AwaitingPin extends ConsumerWidget {
             const SizedBox(height: 12),
             Text(
               'Reference: $referenceId',
-              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textMuted,
+              ),
             ),
           ],
         ),

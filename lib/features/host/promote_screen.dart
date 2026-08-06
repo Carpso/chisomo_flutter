@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -42,7 +43,9 @@ class PromoteScreen extends ConsumerWidget {
           ref.invalidate(myPromotionsProvider);
         },
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16).copyWith(
+            bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
           children: [
             info.when(
               loading: () => const Center(child: AppIconSpinner()),
@@ -190,7 +193,7 @@ class PromoteScreen extends ConsumerWidget {
                               ),
                               isThreeLine: true,
                               trailing: Text(
-                                p.createdAt.substring(0, 10),
+                                safeDate(p.createdAt),
                                 style: Theme.of(context)
                                     .textTheme
                                     .bodySmall
@@ -244,8 +247,7 @@ class _PromotableCard extends ConsumerWidget {
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              padding: const EdgeInsets.all(4),
-              child: CampaignImage(campaign: campaign, fit: BoxFit.contain),
+              child: CampaignImage(campaign: campaign, fit: BoxFit.cover),
             ),
             const SizedBox(width: 12),
             Expanded(

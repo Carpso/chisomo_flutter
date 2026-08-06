@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -131,7 +132,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
     );
     final minSponsorsController = TextEditingController(text: '1');
     final endsAtController = TextEditingController(
-      text: campaign.endsAt != null ? campaign.endsAt!.substring(0, 10) : '',
+      text: campaign.endsAt != null ? safeDate(campaign.endsAt) : '',
     );
     String status = campaign.status;
     final messenger = ScaffoldMessenger.of(context);

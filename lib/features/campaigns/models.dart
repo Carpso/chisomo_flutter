@@ -24,6 +24,7 @@ class Campaign {
   final bool promoted;
   final String? promotedUntil;
   final String createdAt;
+  final String? shareUrl;
 
   const Campaign({
     required this.id,
@@ -49,35 +50,38 @@ class Campaign {
     this.promoted = false,
     this.promotedUntil,
     required this.createdAt,
+    this.shareUrl,
   });
 
   factory Campaign.fromJson(Map<String, dynamic> j) => Campaign(
-        id: j['id'] as int,
-        slug: j['slug'] as String,
-        title: j['title'] as String,
-        description: j['description'] as String? ?? '',
-        imageUrl: j['imageUrl'] as String?,
-        logoUrl: j['logoUrl'] as String?,
-        goalCents: j['goalCents'] as int? ?? 0,
-        hasGoal: j['hasGoal'] as bool? ?? ((j['goalCents'] as int? ?? 0) > 0),
-        raisedCents: j['raisedCents'] as int? ?? 0,
-        withdrawnCents: j['withdrawnCents'] as int? ?? 0,
-        donorCount: j['donorCount'] as int? ?? 0,
-        donationCount: j['donationCount'] as int? ?? (j['donorCount'] as int? ?? 0),
-        avgDonationCents: j['avgDonationCents'] as int? ?? 0,
-        donorsNeededAtAvg: j['donorsNeededAtAvg'] as int?,
-        dailyRateCents: j['dailyRateCents'] as int? ?? 0,
-        estimatedEndDate: j['estimatedEndDate'] as String?,
-        endsAt: j['endsAt'] as String?,
-        status: j['status'] as String? ?? 'active',
-        availableCents: j['availableCents'] as int?,
-        minWithdrawCents: j['minWithdrawCents'] as int?,
-        promoted: j['promoted'] as bool? ?? false,
-        promotedUntil: j['promotedUntil'] as String?,
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    id: j['id'] as int,
+    slug: j['slug'] as String,
+    title: j['title'] as String,
+    description: j['description'] as String? ?? '',
+    imageUrl: j['imageUrl'] as String?,
+    logoUrl: j['logoUrl'] as String?,
+    goalCents: j['goalCents'] as int? ?? 0,
+    hasGoal: j['hasGoal'] as bool? ?? ((j['goalCents'] as int? ?? 0) > 0),
+    raisedCents: j['raisedCents'] as int? ?? 0,
+    withdrawnCents: j['withdrawnCents'] as int? ?? 0,
+    donorCount: j['donorCount'] as int? ?? 0,
+    donationCount: j['donationCount'] as int? ?? (j['donorCount'] as int? ?? 0),
+    avgDonationCents: j['avgDonationCents'] as int? ?? 0,
+    donorsNeededAtAvg: j['donorsNeededAtAvg'] as int?,
+    dailyRateCents: j['dailyRateCents'] as int? ?? 0,
+    estimatedEndDate: j['estimatedEndDate'] as String?,
+    endsAt: j['endsAt'] as String?,
+    status: j['status'] as String? ?? 'active',
+    availableCents: j['availableCents'] as int?,
+    minWithdrawCents: j['minWithdrawCents'] as int?,
+    promoted: j['promoted'] as bool? ?? false,
+    promotedUntil: j['promotedUntil'] as String?,
+    createdAt: j['createdAt'] as String? ?? '',
+    shareUrl: j['shareUrl'] as String?,
+  );
 
-  double get progress => goalCents <= 0 ? 0 : (raisedCents / goalCents).clamp(0.0, 1.0);
+  double get progress =>
+      goalCents <= 0 ? 0 : (raisedCents / goalCents).clamp(0.0, 1.0);
 
   String get raisedLabel => formatKwacha(raisedCents);
 
@@ -110,15 +114,15 @@ class Pledge {
   });
 
   factory Pledge.fromJson(Map<String, dynamic> j) => Pledge(
-        id: j['id'] as int,
-        campaignId: j['campaignId'] as int,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        campaignSlug: j['campaignSlug'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        dayOfMonth: j['dayOfMonth'] as int? ?? 1,
-        active: j['active'] as bool? ?? false,
-        lastRemindedAt: j['lastRemindedAt'] as String?,
-      );
+    id: j['id'] as int,
+    campaignId: j['campaignId'] as int,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    campaignSlug: j['campaignSlug'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    dayOfMonth: j['dayOfMonth'] as int? ?? 1,
+    active: j['active'] as bool? ?? false,
+    lastRemindedAt: j['lastRemindedAt'] as String?,
+  );
 }
 
 /// Live state of the paid top-5 promotion slots.
@@ -140,13 +144,15 @@ class PromotionInfo {
   });
 
   factory PromotionInfo.fromJson(Map<String, dynamic> j) => PromotionInfo(
-        slots: j['slots'] as int? ?? 5,
-        active: j['active'] as int? ?? 0,
-        available: j['available'] as int? ?? 5,
-        priceCents: j['priceCents'] as int? ?? 15000,
-        days: j['days'] as int? ?? 7,
-        promotedIds: (j['promotedIds'] as List<dynamic>? ?? []).map((e) => e as int).toList(),
-      );
+    slots: j['slots'] as int? ?? 5,
+    active: j['active'] as int? ?? 0,
+    available: j['available'] as int? ?? 5,
+    priceCents: j['priceCents'] as int? ?? 15000,
+    days: j['days'] as int? ?? 7,
+    promotedIds: (j['promotedIds'] as List<dynamic>? ?? [])
+        .map((e) => e as int)
+        .toList(),
+  );
 }
 
 class AdminPromotion {
@@ -175,17 +181,17 @@ class AdminPromotion {
   });
 
   factory AdminPromotion.fromJson(Map<String, dynamic> j) => AdminPromotion(
-        id: j['id'] as int? ?? 0,
-        campaignId: j['campaignId'] as int? ?? 0,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        hostPhone: j['hostPhone'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        days: j['days'] as int? ?? 0,
-        status: j['status'] as String? ?? '',
-        reference: j['reference'] as String?,
-        expiresAt: j['expiresAt'] as String?,
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    id: j['id'] as int? ?? 0,
+    campaignId: j['campaignId'] as int? ?? 0,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    hostPhone: j['hostPhone'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    days: j['days'] as int? ?? 0,
+    status: j['status'] as String? ?? '',
+    reference: j['reference'] as String?,
+    expiresAt: j['expiresAt'] as String?,
+    createdAt: j['createdAt'] as String? ?? '',
+  );
 }
 
 /// A host's own promotion purchase history.
@@ -213,16 +219,16 @@ class MyPromotion {
   });
 
   factory MyPromotion.fromJson(Map<String, dynamic> j) => MyPromotion(
-        id: j['id'] as int? ?? 0,
-        campaignId: j['campaignId'] as int? ?? 0,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        days: j['days'] as int? ?? 0,
-        status: j['status'] as String? ?? '',
-        reference: j['reference'] as String?,
-        expiresAt: j['expiresAt'] as String?,
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    id: j['id'] as int? ?? 0,
+    campaignId: j['campaignId'] as int? ?? 0,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    days: j['days'] as int? ?? 0,
+    status: j['status'] as String? ?? '',
+    reference: j['reference'] as String?,
+    expiresAt: j['expiresAt'] as String?,
+    createdAt: j['createdAt'] as String? ?? '',
+  );
 
   String get statusLabel {
     switch (status) {
@@ -268,16 +274,16 @@ class Donor {
   });
 
   factory Donor.fromJson(Map<String, dynamic> j) => Donor(
-        username: j['username'] as String? ?? 'Giver',
-        name: j['name'] as String?,
-        avatarUrl: j['avatarUrl'] as String?,
-        isAnonymous: j['isAnonymous'] as bool? ?? false,
-        amountCents: j['amountCents'] as int?,
-        tier: j['tier'] as String?,
-        date: j['date'] as String? ?? '',
-        donationCount: j['donationCount'] as int? ?? 1,
-        hiddenCount: j['hiddenCount'] as int? ?? 0,
-      );
+    username: j['username'] as String? ?? 'Giver',
+    name: j['name'] as String?,
+    avatarUrl: j['avatarUrl'] as String?,
+    isAnonymous: j['isAnonymous'] as bool? ?? false,
+    amountCents: j['amountCents'] as int?,
+    tier: j['tier'] as String?,
+    date: j['date'] as String? ?? '',
+    donationCount: j['donationCount'] as int? ?? 1,
+    hiddenCount: j['hiddenCount'] as int? ?? 0,
+  );
 
   String get displayName => name ?? username;
 
@@ -289,7 +295,9 @@ class Donor {
     final parts = <String>[date];
     if (donationCount > 1) parts.add('$donationCount donations');
     if (hiddenCount > 0) {
-      parts.add(hiddenCount == donationCount ? 'amount hidden' : '$hiddenCount hidden');
+      parts.add(
+        hiddenCount == donationCount ? 'amount hidden' : '$hiddenCount hidden',
+      );
     }
     return parts.join(' • ');
   }
@@ -307,15 +315,16 @@ class LeaderboardEntry {
   });
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> j) => LeaderboardEntry(
-        username: j['username'] as String? ?? 'Giver',
-        totalCents: j['totalCents'] as int? ?? 0,
-        tier: j['tier'] as String? ?? 'Giver',
-      );
+    username: j['username'] as String? ?? 'Giver',
+    totalCents: j['totalCents'] as int? ?? 0,
+    tier: j['tier'] as String? ?? 'Giver',
+  );
 }
 
 class FeesInfo {
   final double platformPct;
   final int platformMinFeeCents;
+  final int platformFixedFeeCents;
   final double momoPct;
   final double totalPct;
   final double disbursementPct;
@@ -323,18 +332,20 @@ class FeesInfo {
   const FeesInfo({
     required this.platformPct,
     required this.platformMinFeeCents,
+    required this.platformFixedFeeCents,
     required this.momoPct,
     required this.totalPct,
     required this.disbursementPct,
   });
 
   factory FeesInfo.fromJson(Map<String, dynamic> j) => FeesInfo(
-        platformPct: (j['platformPct'] as num? ?? 1).toDouble(),
-        platformMinFeeCents: j['platformMinFeeCents'] as int? ?? 300,
-        momoPct: (j['momoPct'] as num? ?? 2.5).toDouble(),
-        totalPct: (j['totalPct'] as num? ?? 3.5).toDouble(),
-        disbursementPct: (j['disbursementPct'] as num? ?? 1.5).toDouble(),
-      );
+    platformPct: (j['platformPct'] as num? ?? 1).toDouble(),
+    platformMinFeeCents: j['platformMinFeeCents'] as int? ?? 300,
+    platformFixedFeeCents: j['platformFixedFeeCents'] as int? ?? 24,
+    momoPct: (j['momoPct'] as num? ?? 2.5).toDouble(),
+    totalPct: (j['totalPct'] as num? ?? 3.5).toDouble(),
+    disbursementPct: (j['disbursementPct'] as num? ?? 1.5).toDouble(),
+  );
 }
 
 class CampaignDetail {
@@ -351,15 +362,15 @@ class CampaignDetail {
   });
 
   factory CampaignDetail.fromJson(Map<String, dynamic> j) => CampaignDetail(
-        campaign: Campaign.fromJson(j['campaign'] as Map<String, dynamic>),
-        donors: (j['donors'] as List<dynamic>? ?? [])
-            .map((d) => Donor.fromJson(d as Map<String, dynamic>))
-            .toList(),
-        leaderboard: (j['leaderboard'] as List<dynamic>? ?? [])
-            .map((l) => LeaderboardEntry.fromJson(l as Map<String, dynamic>))
-            .toList(),
-        fees: FeesInfo.fromJson(j['fees'] as Map<String, dynamic>? ?? {}),
-      );
+    campaign: Campaign.fromJson(j['campaign'] as Map<String, dynamic>),
+    donors: (j['donors'] as List<dynamic>? ?? [])
+        .map((d) => Donor.fromJson(d as Map<String, dynamic>))
+        .toList(),
+    leaderboard: (j['leaderboard'] as List<dynamic>? ?? [])
+        .map((l) => LeaderboardEntry.fromJson(l as Map<String, dynamic>))
+        .toList(),
+    fees: FeesInfo.fromJson(j['fees'] as Map<String, dynamic>? ?? {}),
+  );
 }
 
 class Transaction {
@@ -396,21 +407,21 @@ class Transaction {
   });
 
   factory Transaction.fromJson(Map<String, dynamic> j) => Transaction(
-        id: j['id'] as int,
-        campaignId: j['campaignId'] as int?,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        donorName: j['donorName'] as String?,
-        isAnonymous: j['isAnonymous'] as bool? ?? false,
-        phone: j['phone'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
-        lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
-        status: j['status'] as String? ?? '',
-        lipilaReference: j['lipilaReference'] as String?,
-        lipilaIdentifier: j['lipilaIdentifier'] as String?,
-        confirmedAt: j['confirmedAt'] as String?,
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    id: j['id'] as int,
+    campaignId: j['campaignId'] as int?,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    donorName: j['donorName'] as String?,
+    isAnonymous: j['isAnonymous'] as bool? ?? false,
+    phone: j['phone'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+    lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
+    status: j['status'] as String? ?? '',
+    lipilaReference: j['lipilaReference'] as String?,
+    lipilaIdentifier: j['lipilaIdentifier'] as String?,
+    confirmedAt: j['confirmedAt'] as String?,
+    createdAt: j['createdAt'] as String? ?? '',
+  );
 
   String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? 'Giver');
 }
@@ -447,20 +458,20 @@ class HostUser {
   });
 
   factory HostUser.fromJson(Map<String, dynamic> j) => HostUser(
-        id: j['id'] as int? ?? 0,
-        phone: j['phone'] as String? ?? '',
-        username: j['username'] as String? ?? 'Giver',
-        name: j['name'] as String?,
-        avatarUrl: j['avatarUrl'] as String?,
-        isHost: j['isHost'] as bool? ?? false,
-        isAdmin: j['isAdmin'] as bool? ?? false,
-        hostStatus: j['hostStatus'] as String? ?? 'none',
-        hostOrg: j['hostOrg'] as String?,
-        hostRole: j['hostRole'] as String?,
-        hostRejection: j['hostRejection'] as String?,
-        totalGivenCents: j['totalGivenCents'] as int? ?? 0,
-        tier: j['tier'] as String? ?? 'Giver',
-      );
+    id: j['id'] as int? ?? 0,
+    phone: j['phone'] as String? ?? '',
+    username: j['username'] as String? ?? 'Giver',
+    name: j['name'] as String?,
+    avatarUrl: j['avatarUrl'] as String?,
+    isHost: j['isHost'] as bool? ?? false,
+    isAdmin: j['isAdmin'] as bool? ?? false,
+    hostStatus: j['hostStatus'] as String? ?? 'none',
+    hostOrg: j['hostOrg'] as String?,
+    hostRole: j['hostRole'] as String?,
+    hostRejection: j['hostRejection'] as String?,
+    totalGivenCents: j['totalGivenCents'] as int? ?? 0,
+    tier: j['tier'] as String? ?? 'Giver',
+  );
 }
 
 class HostApplication {
@@ -487,16 +498,16 @@ class HostApplication {
   });
 
   factory HostApplication.fromJson(Map<String, dynamic> j) => HostApplication(
-        id: j['id'] as int,
-        phone: j['phone'] as String? ?? '',
-        username: j['username'] as String? ?? 'Giver',
-        hostStatus: j['hostStatus'] as String? ?? 'none',
-        org: j['org'] as String?,
-        role: j['role'] as String?,
-        reason: j['reason'] as String?,
-        rejection: j['rejection'] as String?,
-        appliedAt: j['appliedAt'] as String? ?? '',
-      );
+    id: j['id'] as int,
+    phone: j['phone'] as String? ?? '',
+    username: j['username'] as String? ?? 'Giver',
+    hostStatus: j['hostStatus'] as String? ?? 'none',
+    org: j['org'] as String?,
+    role: j['role'] as String?,
+    reason: j['reason'] as String?,
+    rejection: j['rejection'] as String?,
+    appliedAt: j['appliedAt'] as String? ?? '',
+  );
 }
 
 class AdminStats {
@@ -549,29 +560,29 @@ class AdminStats {
   });
 
   factory AdminStats.fromJson(Map<String, dynamic> j) => AdminStats(
-        totalRaisedCents: j['totalRaisedCents'] as int? ?? 0,
-        confirmedDonations: j['confirmedDonations'] as int? ?? 0,
-        donors: j['donors'] as int? ?? 0,
-        platformFeesCents: j['platformFeesCents'] as int? ?? 0,
-        activeCampaigns: j['activeCampaigns'] as int? ?? 0,
-        pendingApplications: j['pendingApplications'] as int? ?? 0,
-        dailyRateCents: j['dailyRateCents'] as int? ?? 0,
-        usersTotal: j['usersTotal'] as int? ?? 0,
-        hostsTotal: j['hostsTotal'] as int? ?? 0,
-        newUsers7d: j['newUsers7d'] as int? ?? 0,
-        newUsers30d: j['newUsers30d'] as int? ?? 0,
-        campaignsTotal: j['campaignsTotal'] as int? ?? 0,
-        newCampaigns7d: j['newCampaigns7d'] as int? ?? 0,
-        newCampaigns30d: j['newCampaigns30d'] as int? ?? 0,
-        donationsTotal: j['donationsTotal'] as int? ?? 0,
-        newDonations7d: j['newDonations7d'] as int? ?? 0,
-        newDonations30d: j['newDonations30d'] as int? ?? 0,
-        receiptsDownloaded: j['receiptsDownloaded'] as int? ?? 0,
-        receiptsDownloaded7d: j['receiptsDownloaded7d'] as int? ?? 0,
-        activePledges: j['activePledges'] as int? ?? 0,
-        openTickets: j['openTickets'] as int? ?? 0,
-        pendingDeleteRequests: j['pendingDeleteRequests'] as int? ?? 0,
-      );
+    totalRaisedCents: j['totalRaisedCents'] as int? ?? 0,
+    confirmedDonations: j['confirmedDonations'] as int? ?? 0,
+    donors: j['donors'] as int? ?? 0,
+    platformFeesCents: j['platformFeesCents'] as int? ?? 0,
+    activeCampaigns: j['activeCampaigns'] as int? ?? 0,
+    pendingApplications: j['pendingApplications'] as int? ?? 0,
+    dailyRateCents: j['dailyRateCents'] as int? ?? 0,
+    usersTotal: j['usersTotal'] as int? ?? 0,
+    hostsTotal: j['hostsTotal'] as int? ?? 0,
+    newUsers7d: j['newUsers7d'] as int? ?? 0,
+    newUsers30d: j['newUsers30d'] as int? ?? 0,
+    campaignsTotal: j['campaignsTotal'] as int? ?? 0,
+    newCampaigns7d: j['newCampaigns7d'] as int? ?? 0,
+    newCampaigns30d: j['newCampaigns30d'] as int? ?? 0,
+    donationsTotal: j['donationsTotal'] as int? ?? 0,
+    newDonations7d: j['newDonations7d'] as int? ?? 0,
+    newDonations30d: j['newDonations30d'] as int? ?? 0,
+    receiptsDownloaded: j['receiptsDownloaded'] as int? ?? 0,
+    receiptsDownloaded7d: j['receiptsDownloaded7d'] as int? ?? 0,
+    activePledges: j['activePledges'] as int? ?? 0,
+    openTickets: j['openTickets'] as int? ?? 0,
+    pendingDeleteRequests: j['pendingDeleteRequests'] as int? ?? 0,
+  );
 }
 
 class AdminTransaction {
@@ -606,20 +617,20 @@ class AdminTransaction {
   });
 
   factory AdminTransaction.fromJson(Map<String, dynamic> j) => AdminTransaction(
-        id: j['id'] as int? ?? 0,
-        campaignId: j['campaignId'] as int?,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        donorName: j['donorName'] as String?,
-        isAnonymous: j['isAnonymous'] as bool? ?? false,
-        phone: j['phone'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
-        lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
-        status: j['status'] as String? ?? '',
-        lipilaReference: j['lipilaReference'] as String?,
-        confirmedAt: j['confirmedAt'] as String?,
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    id: j['id'] as int? ?? 0,
+    campaignId: j['campaignId'] as int?,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    donorName: j['donorName'] as String?,
+    isAnonymous: j['isAnonymous'] as bool? ?? false,
+    phone: j['phone'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+    lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
+    status: j['status'] as String? ?? '',
+    lipilaReference: j['lipilaReference'] as String?,
+    confirmedAt: j['confirmedAt'] as String?,
+    createdAt: j['createdAt'] as String? ?? '',
+  );
 
   String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? 'Giver');
 }
@@ -664,7 +675,8 @@ class TransactionDetail {
     this.hideAmount = false,
   });
 
-  factory TransactionDetail.fromJson(Map<String, dynamic> j) => TransactionDetail(
+  factory TransactionDetail.fromJson(Map<String, dynamic> j) =>
+      TransactionDetail(
         id: j['id'] as int? ?? 0,
         campaignId: j['campaignId'] as int?,
         campaignTitle: j['campaignTitle'] as String? ?? '',
@@ -684,11 +696,12 @@ class TransactionDetail {
         hideAmount: j['hideAmount'] as bool? ?? false,
       );
 
-  String get displayName => isAnonymous ? 'Anonymous' : (donorName ?? donorUsername ?? 'Giver');
+  String get displayName =>
+      isAnonymous ? 'Anonymous' : (donorName ?? donorUsername ?? 'Giver');
 }
 
 class Disbursement {
-  final String kind; // payout | sweep
+  final String kind; // payout | sweep | admin_withdraw
   final String id;
   final int? campaignId;
   final String campaignTitle;
@@ -696,6 +709,7 @@ class Disbursement {
   final int lipilaFeeCents;
   final int platformFeeCents;
   final String? lipilaReference;
+  final String? hostPhone;
   final String status;
   final String createdAt;
 
@@ -708,22 +722,24 @@ class Disbursement {
     required this.lipilaFeeCents,
     required this.platformFeeCents,
     required this.lipilaReference,
+    this.hostPhone,
     required this.status,
     required this.createdAt,
   });
 
   factory Disbursement.fromJson(Map<String, dynamic> j) => Disbursement(
-        kind: j['kind'] as String? ?? 'payout',
-        id: j['id'] as String? ?? '',
-        campaignId: j['campaignId'] as int?,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
-        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
-        lipilaReference: j['lipilaReference'] as String?,
-        status: j['status'] as String? ?? '',
-        createdAt: j['createdAt'] as String? ?? '',
-      );
+    kind: j['kind'] as String? ?? 'payout',
+    id: j['id'] as String? ?? '',
+    campaignId: j['campaignId'] as int?,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    lipilaFeeCents: j['lipilaFeeCents'] as int? ?? 0,
+    platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+    lipilaReference: j['lipilaReference'] as String?,
+    hostPhone: j['hostPhone'] as String?,
+    status: j['status'] as String? ?? '',
+    createdAt: j['createdAt'] as String? ?? '',
+  );
 }
 
 class AdminRecent {
@@ -742,12 +758,12 @@ class AdminRecent {
   });
 
   factory AdminRecent.fromJson(Map<String, dynamic> j) => AdminRecent(
-        username: j['username'] as String? ?? 'Giver',
-        amountCents: j['amountCents'] as int? ?? 0,
-        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        date: j['date'] as String? ?? '',
-      );
+    username: j['username'] as String? ?? 'Giver',
+    amountCents: j['amountCents'] as int? ?? 0,
+    platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    date: j['date'] as String? ?? '',
+  );
 }
 
 class ReferralEntry {
@@ -757,9 +773,9 @@ class ReferralEntry {
   const ReferralEntry({required this.username, required this.invites});
 
   factory ReferralEntry.fromJson(Map<String, dynamic> j) => ReferralEntry(
-        username: j['username'] as String? ?? 'Giver',
-        invites: j['invites'] as int? ?? 0,
-      );
+    username: j['username'] as String? ?? 'Giver',
+    invites: j['invites'] as int? ?? 0,
+  );
 }
 
 class AdminData {
@@ -781,28 +797,33 @@ class AdminData {
     required this.allCampaigns,
   });
 
-  factory AdminData.fromJson(Map<String, dynamic> statsJson, Map<String, dynamic> appsJson, Map<String, dynamic> campaignsJson) =>
-      AdminData(
-        stats: AdminStats.fromJson(statsJson['stats'] as Map<String, dynamic>? ?? {}),
-        applications: (appsJson['applications'] as List<dynamic>? ?? [])
-            .map((a) => HostApplication.fromJson(a as Map<String, dynamic>))
-            .toList(),
-        topCampaigns: (statsJson['topCampaigns'] as List<dynamic>? ?? [])
-            .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
-            .toList(),
-        topDonors: (statsJson['topDonors'] as List<dynamic>? ?? [])
-            .map((d) => LeaderboardEntry.fromJson(d as Map<String, dynamic>))
-            .toList(),
-        topReferrers: (statsJson['topReferrers'] as List<dynamic>? ?? [])
-            .map((r) => ReferralEntry.fromJson(r as Map<String, dynamic>))
-            .toList(),
-        recent: (statsJson['recent'] as List<dynamic>? ?? [])
-            .map((r) => AdminRecent.fromJson(r as Map<String, dynamic>))
-            .toList(),
-        allCampaigns: (campaignsJson['campaigns'] as List<dynamic>? ?? [])
-            .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
-            .toList(),
-      );
+  factory AdminData.fromJson(
+    Map<String, dynamic> statsJson,
+    Map<String, dynamic> appsJson,
+    Map<String, dynamic> campaignsJson,
+  ) => AdminData(
+    stats: AdminStats.fromJson(
+      statsJson['stats'] as Map<String, dynamic>? ?? {},
+    ),
+    applications: (appsJson['applications'] as List<dynamic>? ?? [])
+        .map((a) => HostApplication.fromJson(a as Map<String, dynamic>))
+        .toList(),
+    topCampaigns: (statsJson['topCampaigns'] as List<dynamic>? ?? [])
+        .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
+        .toList(),
+    topDonors: (statsJson['topDonors'] as List<dynamic>? ?? [])
+        .map((d) => LeaderboardEntry.fromJson(d as Map<String, dynamic>))
+        .toList(),
+    topReferrers: (statsJson['topReferrers'] as List<dynamic>? ?? [])
+        .map((r) => ReferralEntry.fromJson(r as Map<String, dynamic>))
+        .toList(),
+    recent: (statsJson['recent'] as List<dynamic>? ?? [])
+        .map((r) => AdminRecent.fromJson(r as Map<String, dynamic>))
+        .toList(),
+    allCampaigns: (campaignsJson['campaigns'] as List<dynamic>? ?? [])
+        .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
+        .toList(),
+  );
 }
 
 class HostPayout {
@@ -827,15 +848,15 @@ class HostPayout {
   });
 
   factory HostPayout.fromJson(Map<String, dynamic> j) => HostPayout(
-        id: j['id'] as int? ?? 0,
-        campaignTitle: j['campaignTitle'] as String? ?? '',
-        amountCents: j['amountCents'] as int? ?? 0,
-        disbursementFeeCents: j['disbursementFeeCents'] as int? ?? 0,
-        platformFeeCents: j['platformFeeCents'] as int? ?? 0,
-        status: j['status'] as String? ?? '',
-        reference: j['reference'] as String?,
-        date: j['date'] as String? ?? '',
-      );
+    id: j['id'] as int? ?? 0,
+    campaignTitle: j['campaignTitle'] as String? ?? '',
+    amountCents: j['amountCents'] as int? ?? 0,
+    disbursementFeeCents: j['disbursementFeeCents'] as int? ?? 0,
+    platformFeeCents: j['platformFeeCents'] as int? ?? 0,
+    status: j['status'] as String? ?? '',
+    reference: j['reference'] as String?,
+    date: j['date'] as String? ?? '',
+  );
 }
 
 class HostData {
@@ -852,15 +873,15 @@ class HostData {
   });
 
   factory HostData.fromJson(Map<String, dynamic> j) => HostData(
-        user: HostUser.fromJson(j['user'] as Map<String, dynamic>? ?? {}),
-        campaigns: (j['campaigns'] as List<dynamic>? ?? [])
-            .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
-            .toList(),
-        transactions: (j['transactions'] as List<dynamic>? ?? [])
-            .map((t) => Transaction.fromJson(t as Map<String, dynamic>))
-            .toList(),
-        payouts: (j['payouts'] as List<dynamic>? ?? [])
-            .map((p) => HostPayout.fromJson(p as Map<String, dynamic>))
-            .toList(),
-      );
+    user: HostUser.fromJson(j['user'] as Map<String, dynamic>? ?? {}),
+    campaigns: (j['campaigns'] as List<dynamic>? ?? [])
+        .map((c) => Campaign.fromJson(c as Map<String, dynamic>))
+        .toList(),
+    transactions: (j['transactions'] as List<dynamic>? ?? [])
+        .map((t) => Transaction.fromJson(t as Map<String, dynamic>))
+        .toList(),
+    payouts: (j['payouts'] as List<dynamic>? ?? [])
+        .map((p) => HostPayout.fromJson(p as Map<String, dynamic>))
+        .toList(),
+  );
 }

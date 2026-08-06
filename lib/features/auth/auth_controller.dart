@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/push_service.dart';
 import '../../core/session_store.dart';
 import '../campaigns/campaigns_controller.dart';
 
@@ -13,6 +16,7 @@ class AuthState {
   final bool isHost;
   final bool isAdmin;
   final String hostStatus;
+  final bool signedOut;
 
   const AuthState({
     this.token,
@@ -23,11 +27,12 @@ class AuthState {
     this.isHost = false,
     this.isAdmin = false,
     this.hostStatus = 'none',
+    this.signedOut = false,
   });
 
   bool get loggedIn => token != null;
 
-  AuthState copyWith({String? username, String? name, String? avatarUrl}) => AuthState(
+  AuthState copyWith({String? username, String? name, String? avatarUrl, bool? signedOut}) => AuthState(
         token: token,
         phone: phone,
         username: username ?? this.username,
@@ -36,6 +41,7 @@ class AuthState {
         isHost: isHost,
         isAdmin: isAdmin,
         hostStatus: hostStatus,
+        signedOut: signedOut ?? this.signedOut,
       );
 }
 
@@ -101,7 +107,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     return res['debugCode'] as String?;
   }
 
-  Future<void> verifyOtp(String phone, String code, {String? referralCode}) async {
+  Future<bool> verifyOtp(String phone, String code, {String? referralCode}) async {
     final api = ref.read(apiClientProvider);
     try {
       final res = await api.post('/api/auth/verify-otp', {
@@ -124,9 +130,23 @@ class AuthController extends AsyncNotifier<AuthState> {
         hostStatus: res['user']?['hostStatus'] as String? ?? 'none',
       ));
       _resetData();
+      unawaited(ensurePushRegistered());
+      return res['isNewUser'] == true;
     } on ApiException catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
       rethrow;
+    }
+  }
+
+  void setSignedOut() {
+    final current = state.value ?? const AuthState();
+    state = AsyncValue.data(current.copyWith(signedOut: true));
+  }
+
+  void clearSignedOut() {
+    final current = state.value ?? const AuthState();
+    if (current.signedOut) {
+      state = AsyncValue.data(current.copyWith(signedOut: false));
     }
   }
 

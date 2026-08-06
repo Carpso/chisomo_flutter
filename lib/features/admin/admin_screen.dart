@@ -295,6 +295,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     const _FailedLoginsSection(),
                     const SizedBox(height: 12),
                     const _BanSection(),
+                    const SizedBox(height: 12),
+                    const _PushStatusSection(),
+                    const SizedBox(height: 12),
+                    const _UrlExplanationSection(),
                   ]),
                 ),
               ),
@@ -445,40 +449,153 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(LucideIcons.settings, color: AppColors.primary),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Promotion paywall',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _loading
-                        ? 'Loading…'
-                        : 'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days • set by the admin',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppColors.textMuted),
-                  ),
-                ],
+            Row(
+              children: [
+                const Icon(LucideIcons.settings, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('Promotion paywall', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _loading
+                  ? 'Loading…'
+                  : 'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days — Set by admin',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: _edit,
+                icon: const Icon(LucideIcons.pencil, size: 14),
+                label: const Text('Edit'),
               ),
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _edit,
-              icon: const Icon(LucideIcons.pencil, size: 15),
-              label: const Text('Edit'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Push notification status + test for the admin dashboard.
+class _PushStatusSection extends ConsumerStatefulWidget {
+  const _PushStatusSection();
+
+  @override
+  ConsumerState<_PushStatusSection> createState() => _PushStatusSectionState();
+}
+
+class _PushStatusSectionState extends ConsumerState<_PushStatusSection> {
+  Map<String, dynamic>? _status;
+  bool _loading = true;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ref.read(apiClientProvider).getPushStatus();
+      if (mounted) setState(() { _status = res; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _testPush() async {
+    setState(() => _testing = true);
+    try {
+      final res = await ref.read(apiClientProvider).sendTestPush();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] as String? ?? 'Test push sent')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final configured = _status?['pushConfigured'] == true;
+    final totalTokens = _status?['totalTokens'] as int? ?? 0;
+    final usersWithTokens = _status?['usersWithTokens'] as int? ?? 0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.bellRing, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text('Push notifications', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              ],
             ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const LinearProgressIndicator()
+            else ...[
+              Row(
+                children: [
+                  Icon(configured ? LucideIcons.checkCircle : LucideIcons.xCircle,
+                      size: 16, color: configured ? AppColors.primary : AppColors.danger),
+                  const SizedBox(width: 6),
+                  Text(configured ? 'Firebase configured' : 'Firebase NOT configured',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: configured ? AppColors.primary : AppColors.danger,
+                        fontWeight: FontWeight.w700,
+                      )),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text('Device tokens: $totalTokens (users: $usersWithTokens)',
+                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+              if (!configured) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Set FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY secrets via wrangler to enable push.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: AppColors.danger),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _testing ? null : _testPush,
+                    icon: _testing
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(LucideIcons.send, size: 14),
+                    label: Text(_testing ? 'Sending...' : 'Send test push'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(onPressed: _load, child: const Text('Refresh')),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -497,6 +614,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
   List<dynamic> _tickets = [];
   bool _loading = true;
   String? _error;
+  String _statusFilter = 'all';
 
   @override
   void initState() {
@@ -510,7 +628,8 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
       _error = null;
     });
     try {
-      final tickets = await ref.read(apiClientProvider).getAdminTickets(status: 'open');
+      final status = _statusFilter == 'all' ? '' : _statusFilter;
+      final tickets = await ref.read(apiClientProvider).getAdminTickets(status: status);
       if (mounted) setState(() => _tickets = tickets);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -519,6 +638,113 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  String _statusLabel(String? status) {
+    return switch (status) {
+      'open' => 'Open',
+      'answered' => 'Answered',
+      'resolved' => 'Resolved',
+      'closed' => 'Closed',
+      _ => status ?? 'Unknown',
+    };
+  }
+
+  Color _statusColor(String? status) {
+    return switch (status) {
+      'open' => AppColors.danger,
+      'answered' => AppColors.gold,
+      'resolved' => AppColors.primary,
+      'closed' => AppColors.textMuted,
+      _ => AppColors.textMuted,
+    };
+  }
+
+  Future<void> _resolve(Map<String, dynamic> ticket) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Resolve ticket?'),
+        content: const Text('Mark this ticket as resolved. The user will be notified.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Resolve'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(apiClientProvider).resolveSupportTicket(ticket['id'] as int);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ticket resolved')),
+        );
+        await _load();
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not resolve ticket.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _viewDetails(Map<String, dynamic> ticket) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('#${ticket['id']} ${ticket['subject'] ?? 'No subject'}'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('From: ${ticket['username'] ?? 'Giver'} • ${ticket['phone'] ?? ''}'),
+              const SizedBox(height: 4),
+              Text('Status: ${ticket['status'] ?? 'open'}'),
+              const SizedBox(height: 4),
+              Text('Date: ${(ticket['createdAt'] ?? '').toString().substring(0, 16)}'),
+              const SizedBox(height: 12),
+              const Text('Message:', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(ticket['message'] ?? 'No message'),
+              if (ticket['adminReply'] != null) ...[
+                const SizedBox(height: 12),
+                const Text('Admin reply:', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(ticket['adminReply']?.toString() ?? ''),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          if ((ticket['status'] ?? 'open') != 'resolved')
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _reply(ticket);
+              },
+              icon: const Icon(LucideIcons.reply, size: 15),
+              label: const Text('Reply'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _reply(Map<String, dynamic> ticket) async {
@@ -606,10 +832,32 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
       children: [
         _SectionTitle(
           icon: LucideIcons.messageCircle,
-          title: 'Support tickets (open)',
+          title: 'Support tickets',
           trailing: _loading
               ? null
               : TextButton(onPressed: _load, child: const Text('Refresh')),
+        ),
+        const SizedBox(height: 8),
+        // Status filter
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final (value, label) in [('all', 'All'), ('open', 'Open'), ('answered', 'Answered'), ('resolved', 'Resolved')])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilterChip(
+                    label: Text(label, style: const TextStyle(fontSize: 12)),
+                    selected: _statusFilter == value,
+                    onSelected: (selected) {
+                      if (selected) setState(() => _statusFilter = value);
+                      _load();
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
         if (_loading)
@@ -628,7 +876,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'No open tickets.',
+                'No tickets found.',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: AppColors.textMuted),
               ),
@@ -638,50 +886,108 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
           for (final t in _tickets)
             Card(
               margin: const EdgeInsets.only(bottom: 10),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '#${t['id']} ${t['subject'] ?? ''}',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
+              child: InkWell(
+                onTap: () => _viewDetails(t),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '#${t['id']} ${t['subject'] ?? ''}',
+                              style: theme.textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _statusColor(t['status']).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _statusLabel(t['status']),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: _statusColor(t['status']),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            (t['createdAt'] ?? '').toString().substring(0, 10),
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text('${t['username'] ?? 'Giver'} • ${t['phone'] ?? ''}',
+                          style: theme.textTheme.bodySmall),
+                      const SizedBox(height: 4),
+                      Text(t['message'] ?? '',
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                      if (t['adminReply'] != null) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(LucideIcons.cornerDownRight, size: 12, color: AppColors.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  t['adminReply'],
+                                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.primary),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Text(
-                          (t['createdAt'] ?? '').toString().substring(0, 10),
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: AppColors.textMuted),
-                        ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text('${t['username'] ?? 'Giver'} • ${t['phone'] ?? ''}',
-                        style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 4),
-                    Text(t['message'] ?? '',
-                        maxLines: 3, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Spacer(),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(LucideIcons.hand, size: 12, color: AppColors.textMuted),
+                          const SizedBox(width: 4),
+                          Text('Tap to view details', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          const Spacer(),
+                          if ((t['status'] ?? 'open') != 'resolved') ...[
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              ),
+                              onPressed: () => _resolve(t),
+                              icon: const Icon(LucideIcons.check, size: 14),
+                              label: const Text('Resolve'),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            ),
+                            onPressed: () => _reply(t),
+                            icon: const Icon(LucideIcons.reply, size: 15),
+                            label: Text((t['adminReply'] != null) ? 'Reply again' : 'Reply'),
                           ),
-                          onPressed: () => _reply(t),
-                          icon: const Icon(LucideIcons.reply, size: 15),
-                          label: const Text('Reply'),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1173,37 +1479,20 @@ class _StatGrid extends StatelessWidget {
       childAspectRatio: 1.6,
       children: [
         _StatCard(
-          icon: LucideIcons.wallet,
-          label: 'Total raised',
-          value: formatKwacha(stats.totalRaisedCents),
-          color: AppColors.primary,
-          onTap: () => context.push('/admin/transactions'),
-          info:
-              'Sum of all confirmed donations. Platform fee (1%, min K3) and mobile money fee (2.5%) are paid by the donor on top of their gift — the campaign receives the full gift amount.',
-        ),
-        _StatCard(
           icon: LucideIcons.tent,
           label: 'Active campaigns',
           value: '${stats.activeCampaigns}',
           color: AppColors.primaryLight,
-          onTap: () => _showBreakdown(context, 'Campaigns', [
-            ('Active now', '${stats.activeCampaigns}'),
-            ('All time (not deleted)', '${stats.campaignsTotal}'),
-            ('New (7 days)', '${stats.newCampaigns7d}'),
-            ('New (30 days)', '${stats.newCampaigns30d}'),
-          ]),
-          info: 'Fundraisers currently open for donations. Tap for all-time and new counts.',
+          onTap: () => context.push('/admin/campaigns'),
+          info: 'Fundraisers currently open for donations. Tap to manage campaigns.',
         ),
         _StatCard(
           icon: LucideIcons.users,
           label: 'Donors',
           value: '${stats.donors}',
           color: AppColors.gold,
-          onTap: () => _showBreakdown(context, 'Donors', [
-            ('Distinct donors', '${stats.donors}'),
-          ]),
-          info:
-              'Distinct people who completed at least one donation. One person giving many times counts once.',
+          onTap: () => context.push('/admin/transactions'),
+          info: 'Distinct people who completed at least one donation.',
         ),
         _StatCard(
           icon: LucideIcons.userPlus,
@@ -1217,8 +1506,7 @@ class _StatGrid extends StatelessWidget {
             ('New (7 days)', '${stats.newUsers7d}'),
             ('New (30 days)', '${stats.newUsers30d}'),
           ]),
-          info:
-              'Every phone number that verified with an SMS code. A host is a user approved to run fundraisers.',
+          info: 'Every phone number that verified with an SMS code.',
         ),
         _StatCard(
           icon: LucideIcons.coins,
@@ -1226,21 +1514,15 @@ class _StatGrid extends StatelessWidget {
           value: formatKwacha(stats.platformFeesCents),
           color: AppColors.primary,
           onTap: () => context.push('/admin/disbursements'),
-          info:
-              'Earned fees: 1% (minimum K3) of every confirmed donation, plus 1% (minimum K3) of every host payout. The full breakdown lives under Disbursements.',
+          info: 'Earned fees from donations and payouts.',
         ),
         _StatCard(
           icon: LucideIcons.trendingUp,
           label: 'Per day',
           value: formatKwacha(stats.dailyRateCents),
           color: AppColors.primaryLight,
-          onTap: () => _showBreakdown(context, 'Growth', [
-            ('Daily average raised', formatKwacha(stats.dailyRateCents)),
-            ('Donations (7 days)', '${stats.newDonations7d}'),
-            ('Donations (30 days)', '${stats.newDonations30d}'),
-            ('Donations (all time)', '${stats.donationsTotal}'),
-          ]),
-          info: 'Average amount raised per day since the first campaign was created.',
+          onTap: () => context.push('/admin/transactions'),
+          info: 'Average amount raised per day.',
         ),
         _StatCard(
           icon: LucideIcons.hourglass,
@@ -1250,29 +1532,25 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Host applications', [
             ('Waiting for approval', '${stats.pendingApplications}'),
           ]),
-          info: 'Host applications waiting for your approval. Tap to review them.',
+          info: 'Host applications waiting for your approval.',
         ),
         _StatCard(
           icon: LucideIcons.fileText,
-          label: 'Receipts downloaded',
+          label: 'Receipts',
           value: '${stats.receiptsDownloaded}',
           color: AppColors.primary,
-          onTap: () => _showBreakdown(context, 'Receipt downloads', [
-            ('All time', '${stats.receiptsDownloaded}'),
-            ('Last 7 days', '${stats.receiptsDownloaded7d}'),
-          ]),
-          info: 'How many times donors downloaded a donation receipt (PDF).',
+          onTap: () => context.push('/admin/transactions'),
+          info: 'How many times donors downloaded a PDF receipt.',
         ),
         _StatCard(
           icon: LucideIcons.calendarClock,
-          label: 'Active pledges',
+          label: 'Pledges',
           value: '${stats.activePledges}',
           color: AppColors.gold,
           onTap: () => _showBreakdown(context, 'Recurring pledges', [
             ('Donors on monthly reminders', '${stats.activePledges}'),
           ]),
-          info:
-              'Donors who opted for a monthly reminder: they get an SMS on the same day each month to give again.',
+          info: 'Donors opted for monthly giving reminders.',
         ),
         _StatCard(
           icon: LucideIcons.messageCircle,
@@ -1282,11 +1560,11 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Support', [
             ('Waiting for a reply', '${stats.openTickets}'),
           ]),
-          info: 'Support messages from users that still need a reply.',
+          info: 'Support messages waiting for a reply.',
         ),
         _StatCard(
           icon: LucideIcons.trash2,
-          label: 'Delete requests',
+          label: 'Delete reqs',
           value: '${stats.pendingDeleteRequests}',
           color: stats.pendingDeleteRequests > 0
               ? AppColors.danger
@@ -1294,7 +1572,7 @@ class _StatGrid extends StatelessWidget {
           onTap: () => _showBreakdown(context, 'Campaign deletion', [
             ('Pending approval', '${stats.pendingDeleteRequests}'),
           ]),
-          info: 'Hosts who asked to remove their campaign, waiting for your approval.',
+          info: 'Campaign deletion requests awaiting approval.',
         ),
       ],
     );
@@ -1758,40 +2036,72 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
   }
 
   Future<void> _edit(ThemeData theme) async {
-final controller = TextEditingController(text: _text ?? '');
-    String? savedText;
+    final controller = TextEditingController(text: _text ?? '');
+    final formKey = GlobalKey<FormState>();
+    var saving = false;
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit SMS status text'),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          maxLength: 500,
-          decoration: const InputDecoration(
-            hintText: 'e.g. MTN OTP is currently unavailable. Use Airtel or Zamtel.',
-            alignLabelWithHint: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: AlertDialog(
+            title: const Text('Edit SMS network status'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('This message is shown to users on the campaign tab.', style: TextStyle(fontSize: 12, color: Color(0xFF7A6A5C))),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: controller,
+                    maxLines: 3,
+                    maxLength: 200,
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Message is required' : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Status message',
+                      hintText: 'e.g. MTN OTP is currently unavailable. Use Airtel or Zamtel.',
+                      border: OutlineInputBorder(),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: saving ? null : () async {
+                  if (!formKey.currentState!.validate()) return;
+                  setDialogState(() => saving = true);
+                  try {
+                    await _save(controller.text.trim());
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx, true);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('SMS status updated')),
+                      );
+                    }
+                  } catch (e) {
+                    setDialogState(() => saving = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                    }
+                  }
+                },
+                child: saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save'),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              savedText = controller.text.trim();
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
     controller.dispose();
-    if (ok == true && savedText != null) {
-      await _save(savedText!);
-    }
   }
 }
 
@@ -1976,6 +2286,60 @@ class _BanSectionState extends ConsumerState<_BanSection> {
                   },
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Explains how the app's URL system works: deep links, share links, and short links.
+class _UrlExplanationSection extends ConsumerWidget {
+  const _UrlExplanationSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionTitle(
+              icon: LucideIcons.link,
+              title: 'How links work',
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '1. Deep link: kingdomsponsor://campaign/<id> — opens the app directly '
+              'to a campaign page. Used in push notifications and in-app links.',
+              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '2. Share link: {API_URL}/share/<id> — a web page that shows the campaign '
+              'and has an "Open in app" button. Used when sharing to WhatsApp, SMS, or email. '
+              'People without the app see the campaign on the web.',
+              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '3. Short link: {API_URL}/go/<code> — a short, clean URL that redirects to '
+              'the share link. Hides the API hostname and is used in public-facing materials. '
+              'Click counts are tracked automatically.',
+              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'All three link types are generated automatically when a campaign is created. '
+              'The share button in the campaign detail screen uses the share link. '
+              'Short links are managed in the Short-link clicks section above.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textMuted,
+                height: 1.5,
+              ),
+            ),
           ],
         ),
       ),

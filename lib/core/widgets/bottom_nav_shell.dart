@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../theme.dart';
+
 class BottomNavShell extends StatefulWidget {
   final Widget child;
 
@@ -13,12 +15,13 @@ class BottomNavShell extends StatefulWidget {
 
 class _BottomNavShellState extends State<BottomNavShell> {
   int _currentIndex = 0;
+  bool _showNav = true;
 
   static const _tabs = [
-    _NavTab('/', LucideIcons.home, 'Campaigns'),
-    _NavTab('/pledges', LucideIcons.calendarClock, 'Pledges'),
-    _NavTab('/host', LucideIcons.user, 'Host'),
-    _NavTab('/settings', LucideIcons.settings, 'Settings'),
+    _NavTab('/', LucideIcons.home, 'Campaigns', AppColors.primary),
+    _NavTab('/pledges', LucideIcons.calendarClock, 'Pledges', AppColors.gold),
+    _NavTab('/host', LucideIcons.user, 'Host', AppColors.primary),
+    _NavTab('/settings', LucideIcons.settings, 'Settings', AppColors.textMuted),
   ];
 
   @override
@@ -39,29 +42,70 @@ class _BottomNavShellState extends State<BottomNavShell> {
     }
   }
 
+  void _handleScrollNotification(ScrollNotification notification) {
+    if (notification is! ScrollUpdateNotification) return;
+    final metrics = notification.metrics;
+    final atTop = metrics.pixels <= 0;
+    final scrollingUp = notification.scrollDelta != null && notification.scrollDelta! < 0;
+    final show = atTop || scrollingUp;
+    if (show != _showNav) {
+      setState(() => _showNav = show);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     _syncIndex();
     final loc = GoRouterState.of(context).matchedLocation;
-    final showNav = _tabs.any((tab) => loc == tab.path);
+    final showNavOnRoute = _tabs.any((tab) => loc == tab.path);
+    final showNav = showNavOnRoute && _showNav;
     return Scaffold(
-      body: widget.child,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          _handleScrollNotification(notification);
+          return false;
+        },
+        child: widget.child,
+      ),
       bottomNavigationBar: showNav
-          ? NavigationBar(
-              selectedIndex: _currentIndex,
-              onDestinationSelected: (index) {
-                if (index == _currentIndex) return;
-                _currentIndex = index;
-                context.go(_tabs[index].path);
-              },
-              destinations: [
-                for (final tab in _tabs)
-                  NavigationDestination(
-                    icon: Icon(tab.icon),
-                    selectedIcon: Icon(tab.icon),
-                    label: tab.label,
+          ? Container(
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                    width: 1,
                   ),
-              ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: NavigationBar(
+                selectedIndex: _currentIndex,
+                onDestinationSelected: (index) {
+                  if (index == _currentIndex) return;
+                  _currentIndex = index;
+                  context.go(_tabs[index].path);
+                },
+                indicatorColor: AppColors.primary.withValues(alpha: 0.1),
+                surfaceTintColor: Colors.transparent,
+                destinations: [
+                  for (final tab in _tabs)
+                    NavigationDestination(
+                      icon: Icon(tab.icon,
+                          size: 22, color: AppColors.textMuted),
+                      selectedIcon: Icon(tab.icon,
+                          size: 22, color: tab.color),
+                      label: tab.label,
+                      tooltip: tab.label,
+                    ),
+                ],
+              ),
             )
           : null,
     );
@@ -72,6 +116,7 @@ class _NavTab {
   final String path;
   final IconData icon;
   final String label;
+  final Color color;
 
-  const _NavTab(this.path, this.icon, this.label);
+  const _NavTab(this.path, this.icon, this.label, this.color);
 }

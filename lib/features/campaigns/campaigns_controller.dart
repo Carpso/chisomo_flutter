@@ -109,6 +109,17 @@ class HostController extends AsyncNotifier<HostData> {
     return res;
   }
 
+  Future<Map<String, dynamic>> updateCampaign(
+    int campaignId,
+    Map<String, dynamic> body,
+  ) async {
+    final res = await ref.read(apiClientProvider).updateCampaign(campaignId, body);
+    await refresh();
+    ref.invalidate(campaignsProvider);
+    ref.invalidate(campaignDetailProvider(campaignId));
+    return res;
+  }
+
   Future<Map<String, dynamic>> withdraw(int campaignId) async {
     final res = await ref
         .read(apiClientProvider)

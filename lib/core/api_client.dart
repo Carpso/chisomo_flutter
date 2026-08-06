@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'session_store.dart';
 
@@ -39,43 +40,67 @@ class ApiClient {
       'https://play.google.com/store/apps/details?id=com.kingdomsponsor.app';
 
   Map<String, String> _headers({bool auth = false}) => {
-        'Content-Type': 'application/json',
-        if (auth && token != null) 'Authorization': 'Bearer $token',
-      };
+    'Content-Type': 'application/json',
+    if (auth && token != null) 'Authorization': 'Bearer $token',
+  };
 
   Future<Map<String, dynamic>> get(String path, {bool auth = false}) async {
-    final res = await _send(() =>
-        _client.get(Uri.parse('$_baseUrl$path'), headers: _headers(auth: auth)));
+    final res = await _send(
+      () => _client.get(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(auth: auth),
+      ),
+    );
     return _decode(res);
   }
 
-Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
-       {bool auth = false}) async {
-    final res = await _send(() =>
-        _client.post(Uri.parse('$_baseUrl$path'),
-            headers: _headers(auth: auth), body: jsonEncode(body)));
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body, {
+    bool auth = false,
+  }) async {
+    final res = await _send(
+      () => _client.post(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(auth: auth),
+        body: jsonEncode(body),
+      ),
+    );
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body,
-      {bool auth = false}) async {
-    final res = await _send(() =>
-        _client.put(Uri.parse('$_baseUrl$path'),
-            headers: _headers(auth: auth), body: jsonEncode(body)));
+  Future<Map<String, dynamic>> put(
+    String path,
+    Map<String, dynamic> body, {
+    bool auth = false,
+  }) async {
+    final res = await _send(
+      () => _client.put(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(auth: auth),
+        body: jsonEncode(body),
+      ),
+    );
     return _decode(res);
   }
 
   /// Deletes a resource (pledge cancellation).
   Future<Map<String, dynamic>> delete(String path, {bool auth = false}) async {
-    final res = await _send(() =>
-        _client.delete(Uri.parse('$_baseUrl$path'), headers: _headers(auth: auth)));
+    final res = await _send(
+      () => _client.delete(
+        Uri.parse('$_baseUrl$path'),
+        headers: _headers(auth: auth),
+      ),
+    );
     return _decode(res);
   }
 
   /// Sends a link request to another account (family | couple | team).
   Future<Map<String, dynamic>> linkUser(String targetPhone, String linkType) {
-    return post('/api/user/link', {'targetPhone': targetPhone, 'linkType': linkType},
-        auth: true);
+    return post('/api/user/link', {
+      'targetPhone': targetPhone,
+      'linkType': linkType,
+    }, auth: true);
   }
 
   /// Accepts a pending account link request sent to me.
@@ -106,6 +131,23 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
     return delete('/api/account', auth: true);
   }
 
+  /// Subscribe to a host badge tier.
+  Future<Map<String, dynamic>> subscribeBadge(String tier) {
+    return post('/api/host/badge/subscribe', {'tier': tier}, auth: true);
+  }
+
+  /// Fetch the user's push notification toggle setting.
+  Future<bool> getNotificationsEnabled() async {
+    final res = await get('/api/user/notifications', auth: true);
+    return res['enabled'] == true;
+  }
+
+  /// Update the user's push notification toggle.
+  Future<bool> setNotificationsEnabled(bool enabled) async {
+    final res = await put('/api/user/notifications', { 'enabled': enabled }, auth: true);
+    return res['enabled'] == true;
+  }
+
   /// Lists host announcements for a campaign (public).
   Future<List<dynamic>> getAnnouncements(int campaignId) async {
     final res = await get('/api/campaigns/$campaignId/announcements');
@@ -114,15 +156,21 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
 
   /// Posts a host announcement to a campaign.
   Future<Map<String, dynamic>> postAnnouncement(int campaignId, String body) {
-    return post('/api/campaigns/$campaignId/announcements', {'body': body}, auth: true);
+    return post('/api/campaigns/$campaignId/announcements', {
+      'body': body,
+    }, auth: true);
   }
 
   /// Sets up (or updates) a monthly reminder pledge on a campaign.
   Future<Map<String, dynamic>> createPledge(
-      int campaignId, int amountCents, int dayOfMonth) {
-    return post('/api/campaigns/$campaignId/pledge',
-        {'amountCents': amountCents, 'dayOfMonth': dayOfMonth},
-        auth: true);
+    int campaignId,
+    int amountCents,
+    int dayOfMonth,
+  ) {
+    return post('/api/campaigns/$campaignId/pledge', {
+      'amountCents': amountCents,
+      'dayOfMonth': dayOfMonth,
+    }, auth: true);
   }
 
   /// Cancels the monthly reminder on a campaign.
@@ -153,42 +201,66 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
   }
 
   /// Browser-openable PDF receipt URL for a contribution (needs auth token).
-  String receiptUrl(int contributionId) => '$_baseUrl/api/contributions/$contributionId/receipt?token=$token';
+  String receiptUrl(int contributionId) =>
+      '$_baseUrl/api/contributions/$contributionId/receipt?token=$token';
 
   /// Uploads a campaign logo (multipart). [bytes] is the raw image data.
   Future<Map<String, dynamic>> uploadLogo(
-      int campaignId, List<int> bytes, String filename) async {
+    int campaignId,
+    List<int> bytes,
+    String filename,
+  ) async {
     final ext = filename.split('.').last.toLowerCase();
     final mime = switch (ext) {
       'png' => MediaType('image', 'png'),
       'webp' => MediaType('image', 'webp'),
       _ => MediaType('image', 'jpeg'),
     };
-    final req = http.MultipartRequest(
-        'POST', Uri.parse('$_baseUrl/api/campaigns/$campaignId/logo'))
-      ..headers['Authorization'] = 'Bearer $token'
-      ..files.add(http.MultipartFile.fromBytes('file', bytes,
-          filename: filename, contentType: mime));
-    final res = await _send(() =>
-        req.send().then((s) => http.Response.fromStream(s)));
+    final req =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse('$_baseUrl/api/campaigns/$campaignId/logo'),
+          )
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'file',
+              bytes,
+              filename: filename,
+              contentType: mime,
+            ),
+          );
+    final res = await _send(
+      () => req.send().then((s) => http.Response.fromStream(s)),
+    );
     return _decode(res);
   }
 
   /// Uploads the signed-in user's profile photo (multipart).
-  Future<Map<String, dynamic>> uploadAvatar(List<int> bytes, String filename) async {
+  Future<Map<String, dynamic>> uploadAvatar(
+    List<int> bytes,
+    String filename,
+  ) async {
     final ext = filename.split('.').last.toLowerCase();
     final mime = switch (ext) {
       'png' => MediaType('image', 'png'),
       'webp' => MediaType('image', 'webp'),
       _ => MediaType('image', 'jpeg'),
     };
-    final req = http.MultipartRequest(
-        'POST', Uri.parse('$_baseUrl/api/me/avatar'))
-      ..headers['Authorization'] = 'Bearer $token'
-      ..files.add(http.MultipartFile.fromBytes('file', bytes,
-          filename: filename, contentType: mime));
-    final res = await _send(() =>
-        req.send().then((s) => http.Response.fromStream(s)));
+    final req =
+        http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/me/avatar'))
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'file',
+              bytes,
+              filename: filename,
+              contentType: mime,
+            ),
+          );
+    final res = await _send(
+      () => req.send().then((s) => http.Response.fromStream(s)),
+    );
     return _decode(res);
   }
 
@@ -214,15 +286,20 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
 
   /// Admin: set the promotion price (cents) and duration (days).
   Future<Map<String, dynamic>> setPromotionConfig(int priceCents, int days) {
-    return post('/api/admin/promotion-config',
-        {'priceCents': priceCents, 'days': days}, auth: true);
+    return post('/api/admin/promotion-config', {
+      'priceCents': priceCents,
+      'days': days,
+    }, auth: true);
   }
 
   /// Host: request the admin to delete a campaign.
-  Future<Map<String, dynamic>> requestCampaignDelete(int campaignId,
-      {String reason = ''}) {
-    return post('/api/campaigns/$campaignId/delete-request',
-        {'reason': reason}, auth: true);
+  Future<Map<String, dynamic>> requestCampaignDelete(
+    int campaignId, {
+    String reason = '',
+  }) {
+    return post('/api/campaigns/$campaignId/delete-request', {
+      'reason': reason,
+    }, auth: true);
   }
 
   /// Admin: pending campaign-delete requests.
@@ -242,13 +319,20 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
   }
 
   /// Admin: delete a campaign directly (host and donors are alerted).
-  Future<Map<String, dynamic>> deleteCampaign(int campaignId, {String reason = ''}) {
-    return post('/api/admin/campaigns/$campaignId/delete',
-        {'reason': reason}, auth: true);
+  Future<Map<String, dynamic>> deleteCampaign(
+    int campaignId, {
+    String reason = '',
+  }) {
+    return post('/api/admin/campaigns/$campaignId/delete', {
+      'reason': reason,
+    }, auth: true);
   }
 
   /// Admin: update a campaign's title, description, goal, status, etc.
-  Future<Map<String, dynamic>> updateCampaign(int campaignId, Map<String, dynamic> body) {
+  Future<Map<String, dynamic>> updateCampaign(
+    int campaignId,
+    Map<String, dynamic> body,
+  ) {
     return put('/api/admin/campaigns/$campaignId', body, auth: true);
   }
 
@@ -269,6 +353,17 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
     return res['failedLogins'] as List<dynamic>? ?? [];
   }
 
+  /// Admin: list active monthly reminder pledges (users' SMS reminders).
+  Future<List<dynamic>> getAdminPledges() async {
+    final res = await get('/api/admin/pledges', auth: true);
+    return res['pledges'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: cancel a user's monthly SMS reminder pledge.
+  Future<Map<String, dynamic>> cancelAdminPledge(int pledgeId) {
+    return post('/api/admin/pledges/$pledgeId/cancel', {}, auth: true);
+  }
+
   /// Admin: check if Telegram bot is configured.
   Future<Map<String, dynamic>> getTelegramConfig() async {
     final res = await get('/api/admin/telegram-config', auth: true);
@@ -276,14 +371,59 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
   }
 
   /// Admin: set Telegram bot token and chat ID.
-  Future<Map<String, dynamic>> setTelegramConfig({String? token, String? chatId}) {
-    return put('/api/admin/telegram-config',
-        {'token': token, 'chatId': chatId}, auth: true);
+  Future<Map<String, dynamic>> setTelegramConfig({
+    String? token,
+    String? chatId,
+  }) {
+    return put('/api/admin/telegram-config', {
+      'token': token,
+      'chatId': chatId,
+    }, auth: true);
   }
 
   /// Admin: trigger a test intruder alert (Telegram + SMS).
   Future<Map<String, dynamic>> testIntruderAlert() {
     return post('/api/admin/intruder-alert/test', {}, auth: true);
+  }
+
+  /// Admin: is the intruder alert scan enabled?
+  Future<Map<String, dynamic>> getIntruderAlert() async {
+    final res = await get('/api/admin/intruder-alert', auth: true);
+    return res;
+  }
+
+  /// Admin: turn the intruder alert scan on or off.
+  Future<Map<String, dynamic>> setIntruderAlert(bool enabled) {
+    return put('/api/admin/intruder-alert', {'enabled': enabled}, auth: true);
+  }
+
+  /// Admin: alert email configuration.
+  Future<Map<String, dynamic>> getEmailConfig() async {
+    final res = await get('/api/admin/email-config', auth: true);
+    return res;
+  }
+
+  /// Admin: set the alert email address.
+  Future<Map<String, dynamic>> setEmailConfig(String email) {
+    return put('/api/admin/email-config', {'email': email}, auth: true);
+  }
+
+  /// Admin: export a full database snapshot (all tables as JSON).
+  Future<Map<String, dynamic>> backupExport() {
+    return get('/api/admin/backup/export', auth: true);
+  }
+
+  /// Admin: restore a previously exported snapshot (wipes listed tables first).
+  Future<Map<String, dynamic>> backupRestore(Map<String, dynamic> tables) {
+    return post('/api/admin/backup/restore', {
+      'confirm': true,
+      'tables': tables,
+    }, auth: true);
+  }
+
+  /// Admin: short-link click stats (top 100 by clicks).
+  Future<Map<String, dynamic>> getShortLinkStats() {
+    return get('/api/admin/short-links', auth: true);
   }
 
   /// Admin: all campaigns (any status) with host and balance info.
@@ -294,13 +434,22 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
 
   /// Resend a Lipila collection prompt for a pending contribution.
   Future<Map<String, dynamic>> resendPrompt(String referenceId) {
-    return post('/api/contributions/$referenceId/resend-prompt', {}, auth: true);
+    return post(
+      '/api/contributions/$referenceId/resend-prompt',
+      {},
+      auth: true,
+    );
   }
 
   /// Submits a support ticket to the superadmin.
-  Future<Map<String, dynamic>> createSupportTicket(String subject, String message) {
-    return post('/api/support/tickets',
-        {'subject': subject, 'message': message}, auth: true);
+  Future<Map<String, dynamic>> createSupportTicket(
+    String subject,
+    String message,
+  ) {
+    return post('/api/support/tickets', {
+      'subject': subject,
+      'message': message,
+    }, auth: true);
   }
 
   /// Lists my support tickets.
@@ -311,13 +460,51 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
 
   /// Replies to a support ticket (user or admin).
   Future<Map<String, dynamic>> replySupportTicket(int id, String message) {
-    return post('/api/support/tickets/$id/reply', {'message': message}, auth: true);
+    return post('/api/support/tickets/$id/reply', {
+      'message': message,
+    }, auth: true);
+  }
+
+  /// Admin: resolve a support ticket.
+  Future<Map<String, dynamic>> resolveSupportTicket(int id) {
+    return put('/api/admin/tickets/$id/resolve', {}, auth: true);
   }
 
   /// Admin: all support tickets (optionally filtered by status).
   Future<List<dynamic>> getAdminTickets({String status = ''}) async {
     final res = await get('/api/admin/tickets?status=$status', auth: true);
     return res['tickets'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: get push notification status (token counts, config).
+  Future<Map<String, dynamic>> getPushStatus() async {
+    return get('/api/admin/push-status', auth: true);
+  }
+
+  /// Admin: send a test push notification.
+  Future<Map<String, dynamic>> sendTestPush({int? userId}) {
+    return post('/api/admin/test-push', userId != null ? {'userId': userId} : {}, auth: true);
+  }
+
+  /// Admin: trigger auto-disburse for all campaigns or a specific campaign.
+  Future<Map<String, dynamic>> triggerDisburse({int? campaignId}) {
+    return post('/api/admin/disburse', campaignId != null ? {'campaignId': campaignId} : {}, auth: true);
+  }
+
+  /// Admin: get Lipila wallet balance.
+  Future<Map<String, dynamic>> getWalletBalance() async {
+    final res = await get('/api/admin/wallet-balance', auth: true);
+    return res;
+  }
+
+  /// Admin: manual withdrawal to a phone number.
+  Future<Map<String, dynamic>> adminWithdraw(int amountCents, String phone) {
+    return post('/api/admin/withdraw', {'amountCents': amountCents, 'phone': phone}, auth: true);
+  }
+
+  /// Get combined donations from a linked account.
+  Future<Map<String, dynamic>> getLinkDonations(int linkId) async {
+    return get('/api/user/links/$linkId/donations', auth: true);
   }
 
   /// Donor: this account's confirmed contributions (for receipts).
@@ -342,17 +529,27 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
   }
 
   /// Admin: host payouts + sweeps ledger.
-  Future<List<dynamic>> getAdminPayouts({int limit = 100, int offset = 0}) async {
-    final res =
-        await get('/api/admin/payouts?limit=$limit&offset=$offset', auth: true);
+  Future<List<dynamic>> getAdminPayouts({
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final res = await get(
+      '/api/admin/payouts?limit=$limit&offset=$offset',
+      auth: true,
+    );
     return res['payouts'] as List<dynamic>? ?? [];
   }
 
   /// Admin: paginated contribution ledger.
-  Future<Map<String, dynamic>> getAdminTransactions(
-      {String status = '', int limit = 500, int offset = 0}) {
-    return get('/api/admin/transactions?status=$status&limit=$limit&offset=$offset',
-        auth: true);
+  Future<Map<String, dynamic>> getAdminTransactions({
+    String status = '',
+    int limit = 500,
+    int offset = 0,
+  }) {
+    return get(
+      '/api/admin/transactions?status=$status&limit=$limit&offset=$offset',
+      auth: true,
+    );
   }
 
   /// Checks the Lipila collection status for a contribution.
@@ -390,6 +587,26 @@ Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body,
       final message = data['error'] is String
           ? data['error'] as String
           : 'Request failed (${res.statusCode}). Try again.';
+      if (res.statusCode >= 500) {
+        Sentry.addBreadcrumb(Breadcrumb(
+          message: 'Server error ${res.statusCode}',
+          category: 'api',
+          data: {
+            'url': res.request?.url.toString() ?? '',
+            'statusCode': res.statusCode,
+            'body': res.body.length > 400
+                ? '${res.body.substring(0, 400)}…'
+                : res.body,
+          },
+        ));
+        final base = data['error'] is String
+            ? data['error'] as String
+            : 'Request failed (${res.statusCode}).';
+        throw ApiException(
+          '$base Check your connection, then pull to refresh and try again.',
+          statusCode: res.statusCode,
+        );
+      }
       throw ApiException(message, statusCode: res.statusCode);
     }
     return data;

@@ -4,6 +4,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 
@@ -128,7 +129,7 @@ class _MyReceiptsScreenState extends ConsumerState<MyReceiptsScreen> {
                                     style: const TextStyle(fontWeight: FontWeight.w700),
                                   ),
                                   subtitle: Text(
-                                    '${(r['date'] ?? '').toString().substring(0, 10)} • ${r['reference'] ?? ''}',
+                                    '${safeDate(r['date'])} • ${r['reference'] ?? ''}',
                                   ),
                                   trailing: IconButton(
                                     tooltip: 'Download PDF',

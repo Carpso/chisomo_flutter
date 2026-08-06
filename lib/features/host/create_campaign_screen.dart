@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +12,9 @@ import '../../core/widgets/app_icon_spinner.dart';
 import '../campaigns/campaigns_controller.dart';
 
 class CreateCampaignScreen extends ConsumerStatefulWidget {
-  const CreateCampaignScreen({super.key});
+  final int? campaignId;
+
+  const CreateCampaignScreen({super.key, this.campaignId});
 
   @override
   ConsumerState<CreateCampaignScreen> createState() => _CreateCampaignScreenState();
@@ -20,12 +24,46 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _goalController = TextEditingController();
-  final _minWithdrawController = TextEditingController(text: '200');
+  final _minWithdrawController = TextEditingController(text: '5');
   bool _submitting = false;
   bool _hasGoal = true;
+  bool _editing = false;
   String? _error;
   DateTime? _endsAt;
   XFile? _logo;
+  String? _existingLogoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.campaignId != null) {
+      _editing = true;
+      _loadCampaign(widget.campaignId!);
+    }
+  }
+
+  Future<void> _loadCampaign(int campaignId) async {
+    try {
+      final res = await ref.read(apiClientProvider).get('/api/campaigns/$campaignId');
+      if (!mounted) return;
+      final c = res;
+      _titleController.text = c['title'] as String? ?? '';
+      _descriptionController.text = c['description'] as String? ?? '';
+      final goalCents = c['goalCents'] as int? ?? 0;
+      _hasGoal = goalCents > 0;
+      _goalController.text = _hasGoal ? (goalCents / 100).toString() : '';
+      final minWithdrawCents = c['minWithdrawCents'] as int? ?? 200;
+      _minWithdrawController.text = (minWithdrawCents / 100).toString();
+      _endsAt = c['endsAt'] != null
+          ? DateTime.tryParse(c['endsAt'] as String)
+          : null;
+      _existingLogoUrl = c['logoUrl'] as String?;
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load campaign data.');
+    }
+  }
 
   @override
   void dispose() {
@@ -46,7 +84,7 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
     if (file != null) setState(() => _logo = file);
   }
 
-  Future<void> _create() async {
+  Future<void> _save() async {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final goalK = double.tryParse(_goalController.text.trim()) ?? 0;
@@ -63,21 +101,54 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
       _error = null;
     });
     try {
-      final res = await ref.read(hostProvider.notifier).createCampaign(
-            title: title,
-            description: description,
-            goalCents: _hasGoal ? (goalK * 100).round() : 0,
-            minWithdrawCents: (minK * 100).round(),
-            endsAt: _endsAt,
-          );
-      final campaignId = res['id'] as int?;
-      if (campaignId != null && _logo != null) {
-        final bytes = await _logo!.readAsBytes();
-        await ref.read(apiClientProvider).uploadLogo(campaignId, bytes, _logo!.name);
+      final api = ref.read(apiClientProvider);
+      final body = {
+        'title': title,
+        'description': description,
+        'goalCents': _hasGoal ? (goalK * 100).round() : 0,
+        'minWithdrawCents': (minK * 100).round(),
+        if (_endsAt != null) 'endsAt': _endsAt!.toIso8601String().split('T')[0],
+      };
+
+       if (_editing && widget.campaignId != null) {
+         await api.updateCampaign(widget.campaignId!, body);
+         if (_logo != null) {
+           try {
+             final bytes = await _logo!.readAsBytes();
+             await api.uploadLogo(widget.campaignId!, bytes, _logo!.name);
+           } catch (_) {}
+         }
+          ref.invalidate(campaignsProvider);
+          ref.invalidate(campaignDetailProvider(widget.campaignId!));
+          if (mounted) context.go('/campaign/${widget.campaignId}');
+      } else {
+        final res = await ref.read(hostProvider.notifier).createCampaign(
+              title: title,
+              description: description,
+              goalCents: _hasGoal ? (goalK * 100).round() : 0,
+              minWithdrawCents: (minK * 100).round(),
+              endsAt: _endsAt,
+            );
+        final campaignId = res['id'] as int?;
+        if (campaignId != null && _logo != null) {
+          try {
+            final bytes = await _logo!.readAsBytes();
+            await api.uploadLogo(campaignId, bytes, _logo!.name);
+          } catch (_) {
+            // Logo upload is best-effort; the campaign is already live.
+          }
+        }
+        if (mounted) context.go('/host');
       }
-      if (mounted) context.go('/host');
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Could not save the campaign. Check your connection and try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -98,9 +169,12 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New campaign')),
+      resizeToAvoidBottomInset: true,
+      appBar: AppBar(title: Text(_editing ? 'Edit campaign' : 'New campaign')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16).copyWith(
+          bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         children: [
           TextField(
             controller: _titleController,
@@ -120,9 +194,51 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
               size: 18,
             ),
             label: Text(
-              _logo == null ? 'Add a photo (optional)' : 'Photo selected — tap to change',
+              _logo != null
+                  ? 'Photo selected — tap to change'
+                  : (_editing && _existingLogoUrl != null
+                      ? 'Logo already uploaded — tap to change'
+                      : 'Add a photo (optional)'),
             ),
           ),
+          if (_logo != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                height: 180,
+                width: double.infinity,
+                child: Image.file(
+                  File(_logo!.path),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ],
+          if (_editing && _existingLogoUrl != null && _logo == null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                height: 180,
+                width: double.infinity,
+                child: Image.network(
+                  _existingLogoUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Current logo (tap "Add a photo" above to replace)',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textMuted,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _descriptionController,
@@ -158,9 +274,10 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
             decoration: const InputDecoration(
               labelText: 'Minimum payout (K)',
               helperText:
-                  'Funds are sent to your mobile money automatically once your available balance reaches this amount. '
-                  'Available = confirmed donations (donors pay platform fee 1% min K3 + mobile money 2.5% on top). '
-                  'Set this to the minimum you want to withdraw at once.',
+                  'Funds are sent to your mobile money automatically once your available balance reaches this amount (default K5). '
+                  'On payout, Lipila charges 1.5% and Kingdom Sponsor charges 1% (min K3). '
+                  'Example: a K100 payout delivers K85.50 to your phone.',
+              helperMaxLines: 4,
             ),
           ),
           const SizedBox(height: 12),
@@ -183,15 +300,27 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
             const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: AppColors.danger)),
           ],
+          if (_editing) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Changes are applied immediately and propagate across the platform within seconds.',
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                height: 1.4,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: _submitting ? null : _create,
+            onPressed: _submitting ? null : _save,
             child: _submitting
-                 ? SizedBox(
-                     width: 22, height: 22,
-                     child: AppIconSpinner(size: 22, color: Colors.white),
-                   )
-                : const Text('Create campaign'),
+                ? SizedBox(
+                    width: 22, height: 22,
+                    child: AppIconSpinner(size: 22, color: Colors.white),
+                  )
+                : Text(_editing ? 'Update campaign' : 'Create campaign'),
           ),
         ],
       ),

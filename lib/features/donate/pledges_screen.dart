@@ -155,16 +155,15 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 40),
+      padding: const EdgeInsets.only(top: 40, bottom: 40),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(LucideIcons.bellPlus, size: 56, color: AppColors.textMuted),
           const SizedBox(height: 16),
-          Center(
-            child: Text(
-              'No monthly reminders yet',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
+          Text(
+            'No monthly reminders yet',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
           Padding(

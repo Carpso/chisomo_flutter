@@ -1,0 +1,90 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
+import '../../core/api_client.dart';
+
+class LinkActionScreen extends ConsumerStatefulWidget {
+  const LinkActionScreen({super.key});
+
+  @override
+  ConsumerState<LinkActionScreen> createState() => _LinkActionScreenState();
+}
+
+class _LinkActionScreenState extends ConsumerState<LinkActionScreen> {
+  String? _message;
+  bool _success = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handle());
+  }
+
+  Future<void> _handle() async {
+    final loc = GoRouterState.of(context).matchedLocation;
+    final idStr = loc.split('/').last;
+    final linkId = int.tryParse(idStr);
+    if (linkId == null) {
+      setState(() => _message = 'Invalid link.');
+      return;
+    }
+
+    final isAccept = loc.contains('/accept');
+    final api = ref.read(apiClientProvider);
+
+    try {
+      if (isAccept) {
+        await api.acceptLink(linkId);
+      } else {
+        await api.rejectLink(linkId);
+      }
+      setState(() {
+        _success = true;
+        _message = isAccept
+            ? 'Account linked! Your combined giving is now visible in Settings.'
+            : 'Link request declined.';
+      });
+    } on ApiException catch (e) {
+      setState(() => _message = e.message);
+    } catch (_) {
+      setState(() => _message = 'Something went wrong. Please try again in the app.');
+    }
+
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) context.go('/settings');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account link')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_message == null)
+                const CircularProgressIndicator()
+              else
+                Icon(
+                  _success ? LucideIcons.checkCircle : LucideIcons.xCircle,
+                  size: 48,
+                  color: _success ? Colors.green : Colors.red,
+                ),
+              const SizedBox(height: 16),
+              Text(
+                _message ?? 'Processing...',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

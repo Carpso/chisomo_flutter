@@ -48,6 +48,11 @@ class BadgesCard extends StatelessWidget {
     final next = nextBadgeFor(totalGivenCents);
 
     return Card(
+      color: current.color.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: current.color.withValues(alpha: 0.3), width: 1.5),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -55,11 +60,14 @@ class BadgesCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(current.icon, size: 20, color: current.color),
+                Icon(current.icon, size: 24, color: current.color),
                 const SizedBox(width: 8),
                 Text(
                   'Your badge: ${current.name}',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: current.color,
+                  ),
                 ),
               ],
             ),
