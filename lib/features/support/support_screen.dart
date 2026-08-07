@@ -188,7 +188,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                           if (ctx.mounted) {
                             Navigator.pop(ctx, true);
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Reply sent')),
+                              const SnackBar(content: Text('Reply sent.')),
                             );
                           }
                         } on ApiException catch (e) {

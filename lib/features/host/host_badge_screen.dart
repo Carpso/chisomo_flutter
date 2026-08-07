@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 
 class BadgeTier {
   final String id;
@@ -18,7 +19,7 @@ class BadgeTier {
 
   factory BadgeTier.fromJson(String id, Map<String, dynamic> j) => BadgeTier(
         id: id,
-        label: j['label'] as String ?? id,
+        label: j['label'] as String? ?? id,
         priceCents: j['priceCents'] as int? ?? 0,
         days: j['days'] as int? ?? 30,
       );
@@ -65,7 +66,7 @@ class _HostBadgeScreenState extends ConsumerState<HostBadgeScreen> {
       if (mounted) {
         setState(() {
           _config = BadgeConfig.fromJson(results[0]);
-          _status = results[1] as Map<String, dynamic>;
+          _status = results[1];
           _loading = false;
         });
       }
@@ -122,7 +123,31 @@ class _HostBadgeScreenState extends ConsumerState<HostBadgeScreen> {
     if (config == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Host Badge')),
-        body: Center(child: Text('Could not load badge info', style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.textMuted))),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(LucideIcons.wifiOff, size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
+                const SizedBox(height: 16),
+                Text('Could not load badge info.', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Text(
+                  'Check your internet connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(LucideIcons.refreshCw),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 
@@ -154,7 +179,7 @@ class _HostBadgeScreenState extends ConsumerState<HostBadgeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Active Badge: ${config.tiers[currentTier]?.label ?? currentTier ?? 'Unknown'}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                          if (expiresAt != null) Text('Expires: ${expiresAt.substring(0, 10)}', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+                          if (expiresAt != null) Text('Expires: ${safeDate(expiresAt)}', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
                         ],
                       ),
                     ),
@@ -176,7 +201,7 @@ class _HostBadgeScreenState extends ConsumerState<HostBadgeScreen> {
                   _benefit(LucideIcons.headphones, 'Priority support response'),
                   _benefit(LucideIcons.users, 'Multiple admin accounts (Pro)'),
                   _benefit(LucideIcons.barChart3, 'Monthly analytics reports (Pro)'),
-                  _benefit(LucideIcons.zap, 'Zero platform fees on first K500 (Annual)'),
+                  _benefit(LucideIcons.zap, 'Zero processing fees on first K500 (Annual)'),
                 ],
               ),
             ),
@@ -193,7 +218,7 @@ class _HostBadgeScreenState extends ConsumerState<HostBadgeScreen> {
                   children: [
                     Icon(LucideIcons.clock, size: 48, color: AppColors.textMuted.withValues(alpha: 0.5)),
                     const SizedBox(height: 12),
-                    Text('Coming Soon', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                    Text('Coming soon', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.textMuted)),
                     const SizedBox(height: 4),
                     Text('The verified host program is not yet active. Check back soon!', textAlign: TextAlign.center, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
                   ],
@@ -320,7 +345,7 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -359,7 +384,7 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.save, size: 16),
-              label: Text(_saving ? 'Saving...' : 'Save Settings'),
+              label: Text(_saving ? 'Saving…' : 'Save Settings'),
             ),
           ],
         ),

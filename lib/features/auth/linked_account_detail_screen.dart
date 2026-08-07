@@ -189,7 +189,7 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
                               children: [
                                 Text('Link request', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 4),
-                                Text('$username wants to link as ${linkType}.', style: theme.textTheme.bodySmall),
+                                Text('$username wants to link as $linkType.', style: theme.textTheme.bodySmall),
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [

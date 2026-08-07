@@ -9,6 +9,7 @@ import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -32,7 +33,7 @@ class TransactionDetailScreen extends ConsumerWidget {
         error: (e, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('$e', textAlign: TextAlign.center),
+            child: Text(friendlyError(e), textAlign: TextAlign.center),
           ),
         ),
         data: (t) => RefreshIndicator(
@@ -94,12 +95,12 @@ class TransactionDetailScreen extends ConsumerWidget {
                 children: [
                   _Row(
                     icon: LucideIcons.receipt,
-                    label: 'Platform fee',
+                    label: 'Platform processing fee',
                     value: formatKwacha(t.platformFeeCents),
                   ),
                   _Row(
                     icon: LucideIcons.wallet,
-                    label: 'Mobile money fee',
+                    label: 'Lipila processing fee',
                     value: formatKwacha(t.lipilaFeeCents),
                   ),
                   _Row(

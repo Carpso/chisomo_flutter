@@ -7,6 +7,7 @@ import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
@@ -52,7 +53,7 @@ class PromoteScreen extends ConsumerWidget {
               error: (e, _) => Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text('$e', style: const TextStyle(color: AppColors.danger)),
+                  child: Text(friendlyError(e), style: const TextStyle(color: AppColors.danger)),
                 ),
               ),
               data: (i) => Card(
@@ -122,7 +123,7 @@ class PromoteScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             host.when(
               loading: () => const Center(child: AppIconSpinner()),
-              error: (e, _) => Text('$e', style: const TextStyle(color: AppColors.danger)),
+              error: (e, _) => Text(friendlyError(e), style: const TextStyle(color: AppColors.danger)),
               data: (data) {
                 final promotable = data.campaigns
                     .where((c) => c.status == 'active' && !c.promoted)
@@ -159,7 +160,7 @@ class PromoteScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             mine.when(
               loading: () => const Center(child: AppIconSpinner()),
-              error: (e, _) => Text('$e', style: const TextStyle(color: AppColors.danger)),
+              error: (e, _) => Text(friendlyError(e), style: const TextStyle(color: AppColors.danger)),
               data: (items) => items.isEmpty
                   ? Card(
                       child: Padding(
@@ -225,14 +226,22 @@ class PromoteScreen extends ConsumerWidget {
       };
 }
 
-class _PromotableCard extends ConsumerWidget {
+class _PromotableCard extends ConsumerStatefulWidget {
   final Campaign campaign;
 
   const _PromotableCard({required this.campaign});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PromotableCard> createState() => _PromotableCardState();
+}
+
+class _PromotableCardState extends ConsumerState<_PromotableCard> {
+  bool _promoting = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final campaign = widget.campaign;
 
     return Card(
       child: Padding(
@@ -269,41 +278,71 @@ class _PromotableCard extends ConsumerWidget {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                try {
-                  final res = await ref
-                      .read(apiClientProvider)
-                      .promoteCampaign(campaign.id);
-                  ref.invalidate(myPromotionsProvider);
-                  if (context.mounted) {
-                    await showDialog<void>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        icon: const Icon(LucideIcons.smartphone,
-                            color: AppColors.primary, size: 28),
-                        title: const Text('Confirm payment on your phone'),
-                        content: Text(
-                          'A ${formatKwacha(res['priceCents'] as int? ?? 0)} request was sent '
-                          'to your phone. Enter your PIN to pay — the promotion goes live '
-                          'after a superadmin approves it.\n\n'
-                          'Ref: ${res['referenceId']}',
-                        ),
-                        actions: [
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Done'),
+              onPressed: _promoting
+                  ? null
+                  : () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          icon: const Icon(LucideIcons.star,
+                              color: AppColors.gold, size: 28),
+                          title: const Text('Promote this campaign?'),
+                          content: Text(
+                            'Promoting costs ${formatKwacha(ref.read(promotionInfoProvider).value?.priceCents ?? 0)}. '
+                            'A payment request will be sent to your phone — '
+                            'enter your PIN to pay. The promotion goes live '
+                            'after a superadmin approves it.',
                           ),
-                        ],
-                      ),
-                    );
-                  }
-                } on ApiException catch (e) {
-                  messenger.showSnackBar(SnackBar(content: Text(e.message)));
-                }
-              },
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Continue'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed != true || !context.mounted) return;
+                      setState(() => _promoting = true);
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        final res = await ref
+                            .read(apiClientProvider)
+                            .promoteCampaign(campaign.id);
+                        ref.invalidate(myPromotionsProvider);
+                        if (context.mounted) {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              icon: const Icon(LucideIcons.smartphone,
+                                  color: AppColors.primary, size: 28),
+                              title: const Text('Confirm payment on your phone'),
+                              content: Text(
+                                'A ${formatKwacha(res['priceCents'] as int? ?? 0)} request was sent '
+                                'to your phone. Enter your PIN to pay — the promotion goes live '
+                                'after a superadmin approves it.\n\n'
+                                'Ref: ${res['referenceId']}',
+                              ),
+                              actions: [
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Done'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      } on ApiException catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                      } finally {
+                        if (mounted) setState(() => _promoting = false);
+                      }
+                    },
               icon: const Icon(LucideIcons.star, size: 16),
-              label: const Text('Promote'),
+              label: Text(_promoting ? 'Processing…' : 'Promote'),
             ),
           ],
         ),

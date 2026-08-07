@@ -76,6 +76,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _sendOtp() async {
+    if (!RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(_phoneE164)) {
+      setState(() => _error =
+          'Enter a complete mobile number (e.g. +260 977 123 456).');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -300,6 +305,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ],
                             onChanged: (value) {
                               if (value.trim().length == 6 && !_submitting) {
+                                _submitting = true;
                                 _verify();
                               }
                             },
@@ -374,22 +380,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                  child: AppIconSpinner(size: 22),
                                )
                              : _otpSent
-                                 ? Text('Verify code')
-                                 : !_canSendOtp
-                                     ? Text('Wait ${_otpCooldownSeconds}s')
-                                     : Text('Send code'),
+                                  ? Text('Verify Code')
+                                  : !_canSendOtp
+                                      ? Text('Wait ${_otpCooldownSeconds}s')
+                                      : Text('Send Code'),
                        ),
                       if (_otpSent) ...[
                         TextButton(
                           onPressed: () => setState(() => _otpSent = false),
-                          child: const Text('Change number'),
+                          child: const Text('Change Number'),
                         ),
                         TextButton(
                           onPressed:
                               _submitting || !_canSendOtp ? null : _sendOtp,
                           child: Text(!_canSendOtp
-                              ? 'Resend code in ${_otpCooldownSeconds}s'
-                              : 'Resend code'),
+                              ? 'Resend Code in ${_otpCooldownSeconds}s'
+                              : 'Resend Code'),
                         ),
                       ],
                       const SizedBox(height: 24),

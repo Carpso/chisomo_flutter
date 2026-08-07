@@ -77,7 +77,7 @@ class _LinkActionScreenState extends ConsumerState<LinkActionScreen> {
                 ),
               const SizedBox(height: 16),
               Text(
-                _message ?? 'Processing...',
+                _message ?? 'Processing…',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),

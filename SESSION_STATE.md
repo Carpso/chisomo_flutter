@@ -92,7 +92,6 @@ Set via `npx wrangler secret put NAME`:
 - [x] Support tickets with admin replies
 - [x] Linked accounts (family, friend, couple, team)
 - [x] PDF receipts
-- [x] Short links for sharing
 
 ### Premium Features
 - [x] Verified Host Badge (3 tiers: Basic K50, Pro K150, Annual K1,200)

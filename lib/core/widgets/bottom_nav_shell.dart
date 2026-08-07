@@ -60,6 +60,10 @@ class _BottomNavShellState extends State<BottomNavShell> {
     final showNavOnRoute = _tabs.any((tab) => loc == tab.path);
     final showNav = showNavOnRoute && _showNav;
     return Scaffold(
+      // The shell must NOT resize for the keyboard: every form screen inside
+      // it has its own Scaffold + viewInsets padding. Two nested Scaffolds
+      // resizing together makes the IME flicker/close on some devices.
+      resizeToAvoidBottomInset: false,
       body: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           _handleScrollNotification(notification);

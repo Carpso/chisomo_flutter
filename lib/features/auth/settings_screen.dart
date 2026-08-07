@@ -13,6 +13,13 @@ import '../../core/widgets/phone_field.dart';
 import '../campaigns/campaigns_controller.dart';
 import 'auth_controller.dart';
 
+/// First letter of a name for avatars; safe for null/empty values.
+String _initial(String? name) {
+  final n = name?.trim();
+  if (n == null || n.isEmpty) return '?';
+  return n.substring(0, 1).toUpperCase();
+}
+
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -113,13 +120,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onPressed: () async {
               if (phoneE164.isEmpty) {
                 ScaffoldMessenger.of(ctx).showSnackBar(
-                  const SnackBar(content: Text('Enter their phone number')),
+                  const SnackBar(content: Text('Enter their phone number.')),
+                );
+                return;
+              }
+              if (!RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(phoneE164)) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(
+                      content: Text('Enter a complete phone number (e.g. +260 977 123 456).')),
                 );
                 return;
               }
               Navigator.pop(ctx, true);
             },
-            child: const Text('Send request'),
+            child: const Text('Send Request'),
           ),
         ],
       ),
@@ -286,7 +300,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           if (ctx.mounted) {
                             Navigator.pop(ctx, true);
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Profile updated')),
+                              const SnackBar(content: Text('Profile updated.')),
                             );
                           }
                         } on ApiException catch (e) {
@@ -354,7 +368,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo updated')),
+          const SnackBar(content: Text('Profile photo updated.')),
         );
       }
     } on ApiException catch (e) {
@@ -483,7 +497,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: AppIconSpinner(size: 16),
                       )
                     : const Icon(LucideIcons.userPlus, size: 16),
-                label: const Text('Link account'),
+                label: const Text('Link Account'),
               ),
             ],
           ),
@@ -513,10 +527,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       leading: CircleAvatar(
                         backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                         child: Text(
-                          ((link['otherUser']?['username'] as String? ?? '?').isNotEmpty
-                                  ? link['otherUser']['username'] as String
-                                  : '?')
-                              .substring(0, 1),
+                          _initial(link['otherUser']?['username'] as String?),
                           style: const TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w800,

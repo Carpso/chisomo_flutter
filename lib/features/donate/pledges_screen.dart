@@ -7,6 +7,7 @@ import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -27,7 +28,7 @@ class PledgesScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$e', textAlign: TextAlign.center),
+                Text(friendlyError(e), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => ref.invalidate(pledgesProvider),

@@ -27,5 +27,21 @@ void main() {
       expect(formatPct(2.5), '2.5%');
       expect(formatPct(33.33), '33.3%');
     });
+
+    test('tolerates floating-point noise around whole numbers', () {
+      expect(formatPct(1.0000000000000002), '1%');
+      expect(formatPct(0.9999999999999999), '1%');
+    });
+  });
+
+  group('formatKwacha integer math', () {
+    test('formats negative amounts', () {
+      expect(formatKwacha(-150), 'K-1.50');
+      expect(formatKwacha(-123456), 'K-1,234.56');
+    });
+
+    test('keeps precision beyond double limits', () {
+      expect(formatKwachaPlain(900719925474099300), '9,007,199,254,740,993.00');
+    });
   });
 }

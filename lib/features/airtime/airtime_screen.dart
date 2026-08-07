@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
-import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 
 class AirtimeConfig {
   final bool enabled;
@@ -45,6 +45,7 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
   String? _error;
   String? _success;
   AirtimeConfig? _config;
+  bool _configFailed = false;
 
   @override
   void initState() {
@@ -60,10 +61,13 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
   }
 
   Future<void> _loadConfig() async {
+    setState(() => _configFailed = false);
     try {
       final res = await ref.read(apiClientProvider).get('/api/airtime/config');
       if (mounted) setState(() => _config = AirtimeConfig.fromJson(res));
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _configFailed = true);
+    }
   }
 
   Future<void> _order() async {
@@ -111,7 +115,9 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Buy Airtime')),
       body: config == null
-          ? const Center(child: AppIconSpinner())
+          ? _configFailed
+              ? _buildLoadError(theme)
+              : const Center(child: AppIconSpinner())
           : !config.enabled
               ? _buildComingSoon(theme)
               : ListView(
@@ -198,7 +204,7 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
                       decoration: InputDecoration(
                         labelText: 'Amount (K)',
                         prefixIcon: const Icon(LucideIcons.coins),
-                        helperText: 'K${config.minAmountCents ~/ 100} - K${config.maxAmountCents ~/ 100} (+${config.markupPct}% fee)',
+                        helperText: 'K${config.minAmountCents ~/ 100} - K${config.maxAmountCents ~/ 100} (+${config.markupPct}% processing fee)',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -235,7 +241,7 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
                     FilledButton.icon(
                       onPressed: _loading ? null : _order,
                       icon: _loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(LucideIcons.zap),
-                      label: Text(_loading ? 'Processing...' : 'Buy Airtime'),
+                      label: Text(_loading ? 'Processing…' : 'Buy Airtime'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: AppColors.primary,
@@ -278,7 +284,7 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
           children: [
             Icon(LucideIcons.smartphone, size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
-            Text('Airtime Coming Soon', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textMuted)),
+            Text('Airtime coming soon', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textMuted)),
             const SizedBox(height: 8),
             Text(
               'We\'re working on bringing you airtime purchases for all Zambian networks. Check back soon!',
@@ -290,6 +296,34 @@ class _AirtimeScreenState extends ConsumerState<AirtimeScreen> {
               onPressed: () => context.go('/'),
               icon: const Icon(LucideIcons.tent),
               label: const Text('Browse Fundraisers'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadError(ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.wifiOff, size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text('Could not load airtime settings', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            Text(
+              'Check your internet connection and try again.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: _loadConfig,
+              icon: const Icon(LucideIcons.refreshCw),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -348,7 +382,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -389,7 +423,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.save, size: 16),
-              label: Text(_saving ? 'Saving...' : 'Save Settings'),
+              label: Text(_saving ? 'Saving…' : 'Save Settings'),
             ),
           ],
         ),

@@ -9,6 +9,13 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 
+/// First letter of a name for avatars; safe for null/empty values.
+String _initial(String? name) {
+  final n = name?.trim();
+  if (n == null || n.isEmpty) return '?';
+  return n.substring(0, 1).toUpperCase();
+}
+
 class ReferralsScreen extends ConsumerStatefulWidget {
   const ReferralsScreen({super.key});
 
@@ -166,7 +173,7 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                                   child: OutlinedButton.icon(
                                     onPressed: _copy,
                                     icon: const Icon(LucideIcons.copy, size: 16),
-                                    label: const Text('Copy code'),
+                                    label: const Text('Copy Code'),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -215,10 +222,7 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                                 leading: CircleAvatar(
                                   backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                                   child: Text(
-                                    ((r['username'] as String? ?? '?').isNotEmpty
-                                            ? r['username'] as String
-                                            : '?')
-                                        .substring(0, 1),
+                                    _initial(r['username'] as String?),
                                     style: const TextStyle(
                                       color: AppColors.primary,
                                       fontWeight: FontWeight.w800,

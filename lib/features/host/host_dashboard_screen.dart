@@ -9,6 +9,7 @@ import '../../core/badges.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/avatar.dart';
 import '../auth/auth_controller.dart';
 import '../campaigns/campaign_image.dart';
@@ -56,7 +57,7 @@ class HostDashboardScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$e', textAlign: TextAlign.center),
+                Text(friendlyError(e), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => ref.invalidate(hostProvider),
@@ -160,8 +161,8 @@ class HostDashboardScreen extends ConsumerWidget {
                                   content: Text(data.user.hostStatus == 'none'
                                       ? 'Apply to become a host first — approval unlocks campaign creation'
                                       : data.user.hostStatus == 'pending'
-                                          ? 'Your application is under review'
-                                          : 'Your application was not approved yet'),
+                                      ? 'Your application is under review.'
+                                      : 'Your application was not approved yet.'),
                                 ),
                               ),
                       icon: const Icon(LucideIcons.plus),
@@ -242,7 +243,7 @@ class HostDashboardScreen extends ConsumerWidget {
                                         await launchUrl(uri, mode: LaunchMode.externalApplication);
                                       } else {
                                         messenger.showSnackBar(
-                                          const SnackBar(content: Text('Could not open receipt')),
+                                          const SnackBar(content: Text('Could not open receipt.')),
                                         );
                                       }
                                     },
@@ -260,7 +261,7 @@ class HostDashboardScreen extends ConsumerWidget {
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context).showSnackBar(
                                                 SnackBar(
-                                                  content: Text('Transaction is now $newStatus'),
+                                                  content: Text('Transaction is now $newStatus.'),
                                                 ),
                                               );
                                               ref.invalidate(hostProvider);
@@ -269,7 +270,7 @@ class HostDashboardScreen extends ConsumerWidget {
                                             if (context.mounted) {
                                               ScaffoldMessenger.of(context).showSnackBar(
                                                 const SnackBar(
-                                                  content: Text('Still pending on Lipila'),
+                                                  content: Text('Still pending on Lipila.'),
                                                 ),
                                               );
                                             }
@@ -278,7 +279,7 @@ class HostDashboardScreen extends ConsumerWidget {
                                           if (context.mounted) {
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               const SnackBar(
-                                                content: Text('Could not check status'),
+                                                content: Text('Could not check status.'),
                                               ),
                                             );
                                           }
@@ -332,7 +333,7 @@ class HostDashboardScreen extends ConsumerWidget {
                           ),
                           isThreeLine: true,
                           trailing: Text(
-                            'fees ${formatKwacha(p.platformFeeCents + p.disbursementFeeCents)}',
+                            'processing fees ${formatKwacha(p.platformFeeCents + p.disbursementFeeCents)}',
                             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
                           ),
                         ),
@@ -593,9 +594,10 @@ class _HostCampaignCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final available = campaign.availableCents ?? 0;
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
-    // Calculate effective payout after Lipila + platform fees
+    // Calculate effective payout after Lipila + platform processing fees.
+    // Platform processing fee = ZMW 0.2400 + 1% (K3 minimum), same as collections.
     final lipilaFee = (available * 1.5 / 100).round();
-    final platformFee = [300, (available * 1 / 100).round()].reduce((a, b) => a > b ? a : b);
+    final platformFee = [324, (available * 1 / 100).round() + 24].reduce((a, b) => a > b ? a : b);
     final netPayout = available - lipilaFee - platformFee;
 
     return Card(
@@ -699,8 +701,12 @@ class _HostCampaignCard extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Available = confirmed donations minus anything already paid out. Platform fee (1%, min K3) and mobile money fee (2.5%) are paid by the donor on top of their gift, so the campaign receives the full gift amount.\n\n'
-                              'Example: a K50 donation gives K50.00 to the campaign. The donor pays K50.00 + K3.00 (platform) + K1.25 (mobile money) = K54.25 total. Withdraw when the balance reaches the minimum shown below.',
+                              'Available = confirmed donations minus anything already paid out. '
+                              'Processing fees (ZMW 0.2400 + 1% (K3 minimum) + Lipila charges) are paid by the '
+                              'donor on top of their gift, so the campaign receives the full gift amount.\n\n'
+                              'Example: a K50 donation gives K50.00 to the campaign. The donor pays '
+                              'K54.49 (K50.00 + K4.49 processing fees: K3.24 platform — K3.00 minimum + K0.24 — '
+                              'plus K1.25 Lipila). Withdraw when the balance reaches the minimum shown below.',
                               style: Theme.of(ctx)
                                   .textTheme
                                   .bodyMedium
@@ -731,20 +737,26 @@ class _HostCampaignCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
+            StatefulBuilder(
+              builder: (context, setLocalState) {
+                bool withdrawing = false;
+                return Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: canWithdraw
+                    onPressed: canWithdraw && !withdrawing
                         ? () async {
+                            setLocalState(() => withdrawing = true);
                             final messenger = ScaffoldMessenger.of(context);
+                            try {
                             final confirmed = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 title: const Text('Confirm withdrawal'),
                                 content: Text(
-                                  'Send ${formatKwacha(available)} to the mobile money number '
-                                  'linked to your account?',
+                                  'Send ${formatKwacha(netPayout)} to the mobile money number '
+                                  'linked to your account? (${formatKwacha(available)} '
+                                  'minus ${formatKwacha(lipilaFee + platformFee)} processing fees.)',
                                   style: const TextStyle(height: 1.5),
                                 ),
                                 actions: [
@@ -765,15 +777,18 @@ class _HostCampaignCard extends ConsumerWidget {
                                 .withdraw(campaign.id);
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text(res['message'] as String? ?? 'Done'),
+                                content: Text(res['message'] as String? ?? 'Withdrawal initiated'),
                               ),
                             );
+                            } finally {
+                              if (context.mounted) setLocalState(() => withdrawing = false);
+                            }
                           }
                         : null,
                     icon: const Icon(LucideIcons.send, size: 16),
                     label: Text(
                       canWithdraw
-                          ? 'Withdraw ${formatKwacha(netPayout)}'
+                          ? withdrawing ? 'Processing…' : 'Withdraw ${formatKwacha(netPayout)}'
                           : 'Min ${formatKwacha(campaign.minWithdrawCents ?? 0)}',
                       style: const TextStyle(fontSize: 13),
                     ),
@@ -835,6 +850,8 @@ class _HostCampaignCard extends ConsumerWidget {
                     onPressed: () => _requestDelete(ref, context),
                   ),
               ],
+            );
+              },
             ),
           ],
         ),
@@ -912,7 +929,7 @@ class _HostCampaignCard extends ConsumerWidget {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Send request'),
+                  : const Text('Send Request'),
             ),
           ],
           ),

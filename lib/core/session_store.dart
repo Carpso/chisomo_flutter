@@ -1,44 +1,23 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persists the session token twice so users stay logged in:
-/// - [FlutterSecureStorage] (encrypted, primary)
-/// - [SharedPreferences] (plain-text fallback that survives Android backup
-///   and device transfer, where the Keystore-protected copy cannot be
-///   decrypted after a restore)
+/// Persists the session token using encrypted storage only.
 class SessionStore {
   static const key = 'kingdom_sponsor_token';
   static const _secure = FlutterSecureStorage();
 
   static Future<String?> read() async {
     try {
-      final secure = await _secure.read(key: key);
-      if (secure != null && secure.isNotEmpty) return secure;
-    } catch (_) {}
-    try {
-      return (await SharedPreferences.getInstance()).getString(key);
+      return await _secure.read(key: key);
     } catch (_) {
       return null;
     }
   }
 
   static Future<void> write(String token) async {
-    try {
-      await _secure.write(key: key, value: token);
-    } catch (_) {}
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, token);
-    } catch (_) {}
+    await _secure.write(key: key, value: token);
   }
 
   static Future<void> delete() async {
-    try {
-      await _secure.delete(key: key);
-    } catch (_) {}
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(key);
-    } catch (_) {}
+    await _secure.delete(key: key);
   }
 }

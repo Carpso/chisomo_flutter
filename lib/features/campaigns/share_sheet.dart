@@ -27,9 +27,8 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
   final auth = ref.read(authControllerProvider).value;
   final refParam = auth != null ? await _refQuery(api) : null;
   final refSuffix = refParam == null ? '' : '?ref=$refParam';
-  // Prefer the API-provided (possibly short/masked) share URL. When a referral
-  // tag is attached it is appended to the long URL because Bitly links do not
-  // forward extra query parameters.
+  // When a referral tag is attached it is appended to the long URL because
+  // short links do not forward extra query parameters.
   final baseUrl = refParam == null
       ? (campaign.shareUrl ?? api.shareUrl(campaign.id))
       : api.shareUrl(campaign.id);
@@ -94,7 +93,7 @@ Future<void> showShareSheet(BuildContext context, WidgetRef ref, Campaign campai
                 }
               },
               icon: const Icon(LucideIcons.copy, size: 18),
-              label: const Text('Copy link'),
+              label: const Text('Copy Link'),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(

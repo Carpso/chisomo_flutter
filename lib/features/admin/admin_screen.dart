@@ -6,8 +6,10 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/avatar.dart';
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -77,7 +79,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$e', textAlign: TextAlign.center),
+                Text(friendlyError(e), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => ref.invalidate(adminDataProvider),
@@ -157,13 +159,13 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     ),
                     const SizedBox(height: 20),
                     KeyedSubtree(
-                      key: _newKey('_appsKey'),
+                      key: _newKey('apps'),
                       child: _ApplicationsSection(applications: data.applications),
                     ),
                     const SizedBox(height: 20),
                     if (data.topCampaigns.isNotEmpty) ...[
                       KeyedSubtree(
-                        key: _newKey('_topKey'),
+                        key: _newKey('top'),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -274,19 +276,19 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       ),
                     ],
                     KeyedSubtree(
-                      key: _newKey('_promosKey'),
+                      key: _newKey('promos'),
                       child: _PromotionsSection(),
                     ),
                     const SizedBox(height: 12),
                     const _PromoConfigSection(),
                     const SizedBox(height: 12),
                     KeyedSubtree(
-                      key: _newKey('_ticketsKey'),
+                      key: _newKey('tickets'),
                       child: const _TicketsSection(),
                     ),
                     const SizedBox(height: 12),
                     KeyedSubtree(
-                      key: _newKey('_deletesKey'),
+                      key: _newKey('deletes'),
                       child: const _DeleteRequestsSection(),
                     ),
                     const SizedBox(height: 12),
@@ -463,7 +465,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
             Text(
               _loading
                   ? 'Loading…'
-                  : 'K${((_priceCents ?? 15000) / 100).toStringAsFixed(0)} for ${_days ?? 7} days — Set by admin',
+                  : '${formatKwacha(_priceCents ?? 15000)} for ${_days ?? 7} days — Set by admin',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 10),
@@ -521,7 +523,7 @@ class _PushStatusSectionState extends ConsumerState<_PushStatusSection> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _testing = false);
@@ -589,7 +591,7 @@ class _PushStatusSectionState extends ConsumerState<_PushStatusSection> {
                     icon: _testing
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(LucideIcons.send, size: 14),
-                    label: Text(_testing ? 'Sending...' : 'Send test push'),
+                    label: Text(_testing ? 'Sending…' : 'Send Test Push'),
                   ),
                   const SizedBox(width: 8),
                   TextButton(onPressed: _load, child: const Text('Refresh')),
@@ -714,7 +716,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
               const SizedBox(height: 4),
               Text('Status: ${ticket['status'] ?? 'open'}'),
               const SizedBox(height: 4),
-              Text('Date: ${(ticket['createdAt'] ?? '').toString().substring(0, 16)}'),
+              Text('Date: ${safePrefix(ticket['createdAt'], 16)}'),
               const SizedBox(height: 12),
               const Text('Message:', style: TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
@@ -919,7 +921,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            (t['createdAt'] ?? '').toString().substring(0, 10),
+                            safeDate(t['createdAt']),
                             style: theme.textTheme.bodySmall
                                 ?.copyWith(color: AppColors.textMuted),
                           ),
@@ -1034,27 +1036,30 @@ class _DeleteRequestsSectionState extends ConsumerState<_DeleteRequestsSection> 
   }
 
   Future<void> _decide(Map<String, dynamic> request, bool approve) async {
-    final confirmed = approve ||
-        (await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Reject delete request?'),
-            content: const Text('The host will be notified that the campaign stays up.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Reject'),
-              ),
-            ],
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(approve ? 'Delete this campaign?' : 'Reject delete request?'),
+        content: Text(
+          approve
+              ? 'The campaign and its public data will be removed, and the '
+                  'host and all donors will be notified. This cannot be undone.'
+              : 'The host will be notified that the campaign stays up.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-        ) ??
-            false);
-    if (!confirmed || !mounted) return;
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(approve ? 'Delete campaign' : 'Reject'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
 
     setState(() => _busy.add(request['id'] as int));
     final messenger = ScaffoldMessenger.of(context);
@@ -1198,7 +1203,7 @@ class _PromotionsSection extends ConsumerWidget {
           error: (e, _) => Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('$e', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.danger)),
+              child: Text(friendlyError(e), style: theme.textTheme.bodySmall?.copyWith(color: AppColors.danger)),
             ),
           ),
           data: (items) => items.isEmpty
@@ -1247,17 +1252,17 @@ class _PromotionsSection extends ConsumerWidget {
                                   children: [
                                     Text('Host: ${p.hostPhone}'),
                                     Text(
-                                        'K${(p.amountCents / 100).toStringAsFixed(0)} • ${p.days} days • ${p.status}'),
+                                        '${formatKwacha(p.amountCents)} • ${p.days} days • ${p.status}'),
                                     if (p.expiresAt != null)
                                       Text(
-                                          'Expires: ${p.expiresAt!.substring(0, 10)}',
+                                          'Expires: ${safeDate(p.expiresAt)}',
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(color: AppColors.textMuted)),
                                   ],
                                 ),
                                 isThreeLine: true,
                                 trailing: Text(
-                                  p.createdAt.substring(0, 10),
+                                  safeDate(p.createdAt),
                                   style: theme.textTheme.bodySmall
                                       ?.copyWith(color: AppColors.textMuted),
                                 ),
@@ -1273,6 +1278,26 @@ class _PromotionsSection extends ConsumerWidget {
                                           padding: const EdgeInsets.symmetric(vertical: 8),
                                         ),
                                         onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Approve promotion?'),
+                                              content: Text(
+                                                  'The campaign will be promoted to the top-5 '
+                                                  'list for ${p.days} days and the host will be notified.'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(ctx, false),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                FilledButton(
+                                                  onPressed: () => Navigator.pop(ctx, true),
+                                                  child: const Text('Approve'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed != true || !context.mounted) return;
                                           final messenger =
                                               ScaffoldMessenger.of(context);
                                           final res = await ref
@@ -1350,7 +1375,7 @@ class _PromotionsSection extends ConsumerWidget {
                                         builder: (ctx) => AlertDialog(
                                           title: const Text('Refund promotion fee?'),
                                           content: Text(
-                                              'K${(p.amountCents / 100).toStringAsFixed(0)} will be sent back to the host\'s mobile money (${p.hostPhone}).'),
+                                              '${formatKwacha(p.amountCents)} will be sent back to the host\'s mobile money (${p.hostPhone}).'),
                                           actions: [
                                             TextButton(
                                               onPressed: () =>
@@ -1510,11 +1535,11 @@ class _StatGrid extends StatelessWidget {
         ),
         _StatCard(
           icon: LucideIcons.coins,
-          label: 'Platform fees',
+          label: 'Processing fees',
           value: formatKwacha(stats.platformFeesCents),
           color: AppColors.primary,
           onTap: () => context.push('/admin/disbursements'),
-          info: 'Earned fees from donations and payouts.',
+          info: 'Earned processing fees from donations and payouts.',
         ),
         _StatCard(
           icon: LucideIcons.trendingUp,
@@ -1643,14 +1668,14 @@ class _StatCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon, size: 20, color: color),
-                const Spacer(),
-                if (info != null)
+                if (info != null) ...[
+                  const SizedBox(width: 6),
                   GestureDetector(
                     onTap: () => _showExplanation(context),
                     child: Container(
@@ -1662,6 +1687,7 @@ class _StatCard extends StatelessWidget {
                       child: Icon(LucideIcons.info, size: 12, color: AppColors.textMuted),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 6),
@@ -1669,12 +1695,17 @@ class _StatCard extends StatelessWidget {
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: AppColors.textDark,
               ),
             ),
-            Text(label, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
           ],
         ),
       ),
@@ -1790,6 +1821,26 @@ class _ApplicationsSection extends ConsumerWidget {
                                 padding: const EdgeInsets.symmetric(vertical: 10),
                               ),
                               onPressed: () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Approve host?'),
+                                    content: Text(
+                                        '${app.username} will get full host access and a '
+                                        'confirmation SMS. You can always ban them later.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Approve'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed != true || !context.mounted) return;
                                 final messenger = ScaffoldMessenger.of(context);
                                 final res = await ref
                                     .read(adminDataProvider.notifier)
@@ -1840,7 +1891,10 @@ class _ApplicationsSection extends ConsumerWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, controller.text),
+              onPressed: () {
+                if (controller.text.trim().isEmpty) return;
+                Navigator.pop(ctx, controller.text);
+              },
               child: const Text('Reject'),
             ),
           ],
@@ -2040,7 +2094,7 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
     final formKey = GlobalKey<FormState>();
     var saving = false;
 
-    final ok = await showDialog<bool>(
+    await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => Padding(
@@ -2083,14 +2137,14 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
                     await _save(controller.text.trim());
                     if (ctx.mounted) {
                       Navigator.pop(ctx, true);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('SMS status updated')),
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('SMS status updated.')),
                       );
                     }
                   } catch (e) {
                     setDialogState(() => saving = false);
                     if (ctx.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(friendlyError(e))));
                     }
                   }
                 },
@@ -2151,13 +2205,32 @@ class _BanSectionState extends ConsumerState<_BanSection> {
   Future<void> _ban() async {
     final target = _targetController.text.trim();
     final reason = _reasonController.text.trim();
-    if (target.isEmpty) return;
+    final banAllHosts = _banKind == 'host' && target.isEmpty;
+    if (target.isEmpty && !banAllHosts) return;
+    if (banAllHosts) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Ban all approved hosts?'),
+          content: const Text('Every approved host will lose host access. This cannot be undone quickly.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Ban all hosts'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     try {
       await ref.read(apiClientProvider).post('/api/admin/ban',
           {'target': target, 'reason': reason, 'kind': _banKind}, auth: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$target" banned.')),
+          SnackBar(content: Text(banAllHosts ? 'All approved hosts banned.' : '"$target" banned.')),
         );
         _targetController.clear();
         _reasonController.clear();
@@ -2293,7 +2366,7 @@ class _BanSectionState extends ConsumerState<_BanSection> {
   }
 }
 
-/// Explains how the app's URL system works: deep links, share links, and short links.
+/// Explains how the app's URL system works: deep links and share links.
 class _UrlExplanationSection extends ConsumerWidget {
   const _UrlExplanationSection();
 
@@ -2325,16 +2398,8 @@ class _UrlExplanationSection extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '3. Short link: {API_URL}/go/<code> — a short, clean URL that redirects to '
-              'the share link. Hides the API hostname and is used in public-facing materials. '
-              'Click counts are tracked automatically.',
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'All three link types are generated automatically when a campaign is created. '
-              'The share button in the campaign detail screen uses the share link. '
-              'Short links are managed in the Short-link clicks section above.',
+              'Both link types are generated automatically when a campaign is created. '
+              'The share button in the campaign detail screen uses the share link.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textMuted,
                 height: 1.5,

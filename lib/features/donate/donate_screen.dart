@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -54,6 +53,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   String? _referenceId;
   int? _contributionId;
   String? _error;
+  String? _statusMessage;
   Timer? _pollTimer;
 
   @override
@@ -61,8 +61,6 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     super.initState();
     final auth = ref.read(authControllerProvider).value;
     if (auth?.phone != null) _phoneE164 = auth!.phone!;
-    _nameController.addListener(() => setState(() {}));
-    _amountController.addListener(() => setState(() {}));
   }
 
   @override
@@ -80,37 +78,42 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     return (kwacha * 100).round();
   }
 
-  /// Calculate total fees (platform + mobile money) for the current amount.
-  ({int platformFee, int lipilaFee, int totalFee, int totalPay}) _calculateFees(FeesInfo? cfg) {
+  /// Calculate total processing fees (platform + Lipila) for the current amount.
+  /// Returns null if fees config is unavailable — caller must handle.
+  ({int platformFee, int lipilaFee, int totalFee, int totalPay})? _calculateFees(FeesInfo? cfg) {
     final amount = _amountCents;
-    if (amount < 100) return (platformFee: 0, lipilaFee: 0, totalFee: 0, totalPay: 0);
-    final platformPct = cfg?.platformPct ?? 1;
-    final platformMin = cfg?.platformMinFeeCents ?? 300;
-    final fixedFee = 24; // ZMW 0.24
-    final momoPct = cfg?.momoPct ?? 2.5;
-    final platformFee = [platformMin + fixedFee, (amount * platformPct / 100).round() + fixedFee].reduce((a, b) => a > b ? a : b);
-    final lipilaFee = (amount * momoPct / 100).round();
+    if (amount < 100 || cfg == null) return null;
+    final platform = cfg.platformMinFeeCents > (amount * cfg.platformPct / 100).round()
+        ? cfg.platformMinFeeCents
+        : (amount * cfg.platformPct / 100).round();
+    final platformFee = platform + cfg.platformFixedFeeCents;
+    final lipilaFee = (amount * cfg.momoPct / 100).round();
     return (platformFee: platformFee, lipilaFee: lipilaFee, totalFee: platformFee + lipilaFee, totalPay: amount + platformFee + lipilaFee);
   }
 
   static int? _suggested(int avgCents) {
     if (avgCents < 100) return null;
-    final s = avgCents ~/ 5000 * 5000;
-    if (s <= 0) return null;
-    return s == avgCents ? avgCents : s + 5000;
+    final s = ((avgCents + 2500) ~/ 5000) * 5000;
+    return s <= 0 ? null : s;
   }
 
   Future<void> _donate() async {
     final amountCents = _amountCents;
     if (amountCents < 100) {
-      setState(() => _error = 'Enter an amount of at least K1');
+      setState(() => _error = 'Enter an amount of at least K1.');
       return;
     }
     final phone = _phoneE164;
     if (phone.isEmpty) {
       setState(
         () => _error =
-            'Enter your mobile number so we can send you a payment prompt',
+            'Enter your mobile number so we can send you a payment prompt.',
+      );
+      return;
+    }
+    if (!RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(phone)) {
+      setState(
+        () => _error = 'Enter a complete mobile number (e.g. +260 977 123 456).',
       );
       return;
     }
@@ -169,11 +172,29 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   void _pollStatus() {
     _pollTimer?.cancel();
+    var polls = 0;
+    var consecutiveErrors = 0;
+    const maxPolls = 40; // ~2 minutes before giving up
+    const maxConsecutiveErrors = 5;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      polls++;
+      if (polls > maxPolls) {
+        timer.cancel();
+        if (mounted) {
+          setState(() {
+            _phase = _Phase.failed;
+            _statusMessage =
+                'We are still waiting for your payment. If you completed it, '
+                'it may take a moment to reflect — check your receipts shortly.';
+          });
+        }
+        return;
+      }
       try {
         final res = await ref
             .read(apiClientProvider)
             .get('/api/contributions/status/$_referenceId');
+        consecutiveErrors = 0;
         final status = res['status'] as String? ?? 'pending';
         final contributionId = res['id'] as int?;
         if (contributionId != null) {
@@ -191,7 +212,18 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
                       _amountCents,
                       _recurringDay,
                     );
-              } catch (_) {}
+              } catch (_) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Payment received, but we could not set up your '
+                        'monthly pledge. You can add it from the Pledges tab.',
+                      ),
+                    ),
+                  );
+                }
+              }
             }
             setState(() => _phase = _Phase.done);
             ref.invalidate(campaignDetailProvider(widget.campaignId));
@@ -201,7 +233,20 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           timer.cancel();
           if (mounted) setState(() => _phase = _Phase.failed);
         }
-      } catch (_) {}
+      } catch (_) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          timer.cancel();
+          if (mounted) {
+            setState(() {
+              _phase = _Phase.failed;
+              _statusMessage =
+                  'Could not reach the payment service. Your payment may '
+                  'still be pending — check your receipts before trying again.';
+            });
+          }
+        }
+      }
     });
   }
 
@@ -216,6 +261,13 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           referenceId: _referenceId ?? '',
           phoneE164: _phoneE164,
           onResend: _resendPrompt,
+          onCancel: () {
+            _pollTimer?.cancel();
+            setState(() {
+              _phase = _Phase.form;
+              _error = null;
+            });
+          },
         ),
         _Phase.done => _buildDone(context),
         _Phase.failed => _buildFailed(context),
@@ -318,13 +370,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             ),
           ],
         ),
-        if (_selectedPreset == 0) ...[
-          const SizedBox(height: 12),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _amountController,
-            builder: (context, _, _) =>
-                _buildFeeBreakdown(context, detail?.fees),
-          ),
+        if (_selectedPreset == 0)
           TextField(
             controller: _amountController,
             keyboardType: TextInputType.number,
@@ -333,53 +379,14 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
               prefixIcon: Icon(LucideIcons.wallet),
             ),
           ),
-        ],
-        if (_selectedPreset > 0) _buildFeeBreakdown(context, detail?.fees),
         const SizedBox(height: 20),
-        // Fee preview card
-        if (_amountCents >= 100)
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Donation', style: TextStyle(color: AppColors.textMuted)),
-                    Text(formatKwacha(_amountCents), style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Platform fees', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                    Text('+${formatKwacha(_calculateFees(detail?.fees).platformFee)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  ],
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Mobile money fee', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                    Text('+${formatKwacha(_calculateFees(detail?.fees).lipilaFee)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  ],
-                ),
-                const Divider(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('You will pay', style: TextStyle(fontWeight: FontWeight.w700)),
-                    Text(formatKwacha(_calculateFees(detail?.fees).totalPay), style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        // Fee preview card — rebuilt locally on each keystroke via the
+        // controller so the rest of the form (and field focus) stays intact.
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _amountController,
+          builder: (context, _, _) =>
+              _amountCents >= 100 ? _buildFeeCard(context, detail?.fees) : const SizedBox.shrink(),
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: _nameController,
@@ -469,7 +476,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         const SizedBox(height: 16),
         ElevatedButton.icon(
           onPressed: (_submitting || _amountCents < 100) ? null : _donate,
-          icon: const Icon(LucideIcons.heartHandshake),
+          icon: _submitting
+              ? const SizedBox.shrink()
+              : const Icon(LucideIcons.heartHandshake),
           label: _submitting
               ? SizedBox(
                   width: 22,
@@ -486,40 +495,42 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     );
   }
 
-  Widget _buildFeeBreakdown(BuildContext context, FeesInfo? fees) {
-    final theme = Theme.of(context);
-    final amountCents = _amountCents;
-    if (fees == null || amountCents < 100) return const SizedBox.shrink();
-    final platform = math.max(
-      fees.platformMinFeeCents,
-      (amountCents * fees.platformPct / 100).round(),
-    );
-    final momo = (amountCents * fees.momoPct / 100).round();
-    final platformFees = platform + fees.platformFixedFeeCents + momo;
-    final total = amountCents + platformFees;
+  Widget _buildFeeCard(BuildContext context, FeesInfo? fees) {
+    final f = _calculateFees(fees);
     return Container(
-      margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.06),
+        color: AppColors.primary.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.1)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'You will pay ${formatKwacha(total)}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Donation', style: TextStyle(color: AppColors.textMuted)),
+              Text(formatKwacha(_amountCents), style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${formatKwacha(amountCents)} donation + ${formatKwacha(platformFees)} platform fees',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.textMuted,
+          if (f != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Processing fees', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                Text('+${formatKwacha(f.totalFee)}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ],
             ),
-          ),
+            const Divider(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('You will pay', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text(formatKwacha(f.totalPay), style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary)),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -528,9 +539,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   Widget _buildFeeNote(BuildContext context, FeesInfo? fees) {
     final theme = Theme.of(context);
     final text = fees == null
-        ? 'A small platform fee and mobile money charges apply. You will get a payment prompt on your phone.'
-        : 'Platform fees (platform ${formatKwacha(fees.platformMinFeeCents)} minimum '
-              '(${formatPct(fees.platformPct)} above that) + ZMW 0.2400 + Lipila charges) apply. '
+        ? 'A small processing fee (ZMW 0.2400 + Lipila charges) applies. You will get a payment prompt on your phone.'
+        : 'Processing fees (ZMW 0.2400 + ${formatPct(fees.platformPct)} '
+              '(${formatKwacha(fees.platformMinFeeCents)} minimum) + Lipila charges) apply. '
               'You will get a payment prompt on your phone.';
     return Text(
       text,
@@ -631,6 +642,16 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
               'The payment was cancelled or did not go through. You can try again.',
               textAlign: TextAlign.center,
             ),
+            if (_statusMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _statusMessage!,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: () => setState(() => _phase = _Phase.form),
@@ -647,11 +668,13 @@ class _AwaitingPin extends ConsumerWidget {
   final String referenceId;
   final String phoneE164;
   final VoidCallback onResend;
+  final VoidCallback onCancel;
 
   const _AwaitingPin({
     required this.referenceId,
     required this.phoneE164,
     required this.onResend,
+    required this.onCancel,
   });
 
   @override
@@ -693,6 +716,11 @@ class _AwaitingPin extends ConsumerWidget {
               onPressed: onResend,
               icon: const Icon(LucideIcons.refreshCw, size: 16),
               label: const Text('Resend prompt'),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: onCancel,
+              child: const Text('Cancel donation'),
             ),
             const SizedBox(height: 12),
             Text(

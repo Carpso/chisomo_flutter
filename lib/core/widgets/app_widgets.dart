@@ -1,7 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../api_client.dart';
 import '../theme.dart';
+
+/// Human-friendly message for any thrown error. ApiException already carries
+/// user-facing copy; network failures and unexpected errors get generic text.
+String friendlyError(Object e) {
+  if (e is ApiException) return e.message;
+  if (e is http.ClientException) {
+    return 'Could not reach the server. Check your internet connection and try again.';
+  }
+  return 'Something went wrong. Please try again.';
+}
 
 /// Orange-branded shimmer skeleton for loading states.
 class AppShimmer extends StatelessWidget {
@@ -170,7 +183,8 @@ class _CopyButtonState extends State<CopyButton> {
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: () async {
-        // Clipboard.setData(ClipboardData(text: widget.text)); // Would need flutter/services
+        await Clipboard.setData(ClipboardData(text: widget.text));
+        if (!context.mounted) return;
         setState(() => _copied = true);
         showSuccessToast(context, 'Link copied!');
         Future.delayed(const Duration(seconds: 2), () {

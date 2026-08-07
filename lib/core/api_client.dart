@@ -421,11 +421,6 @@ class ApiClient {
     }, auth: true);
   }
 
-  /// Admin: short-link click stats (top 100 by clicks).
-  Future<Map<String, dynamic>> getShortLinkStats() {
-    return get('/api/admin/short-links', auth: true);
-  }
-
   /// Admin: all campaigns (any status) with host and balance info.
   Future<List<dynamic>> getAdminCampaigns() async {
     final res = await get('/api/admin/campaigns', auth: true);

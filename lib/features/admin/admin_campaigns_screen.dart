@@ -135,6 +135,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
       text: campaign.endsAt != null ? safeDate(campaign.endsAt) : '',
     );
     String status = campaign.status;
+    String? errorText;
     final messenger = ScaffoldMessenger.of(context);
 
     final ok = await showDialog<bool>(
@@ -211,6 +212,13 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                       prefixIcon: Icon(LucideIcons.flag, size: 18),
                     ),
                   ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: AppColors.danger, fontSize: 13),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -220,7 +228,29 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                 child: const Text('Cancel'),
               ),
               FilledButton.icon(
-                onPressed: () => Navigator.pop(ctx, true),
+                onPressed: () {
+                  final title = titleController.text.trim();
+                  if (title.isEmpty) {
+                    setDialogState(() => errorText = 'Title is required.');
+                    return;
+                  }
+                  final goalStr = goalController.text.trim();
+                  if (goalStr.isNotEmpty && (double.tryParse(goalStr) == null || double.parse(goalStr) <= 0)) {
+                    setDialogState(() => errorText = 'Goal must be a positive number.');
+                    return;
+                  }
+                  final minWStr = minWithdrawController.text.trim();
+                  if (minWStr.isNotEmpty && (double.tryParse(minWStr) == null || double.parse(minWStr) <= 0)) {
+                    setDialogState(() => errorText = 'Minimum withdraw must be a positive number.');
+                    return;
+                  }
+                  final endsAtStr = endsAtController.text.trim();
+                  if (endsAtStr.isNotEmpty && !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(endsAtStr)) {
+                    setDialogState(() => errorText = 'End date must be YYYY-MM-DD.');
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
                 icon: const Icon(LucideIcons.save, size: 16),
                 label: const Text('Save'),
               ),
@@ -310,7 +340,33 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                     ),
                 ],
               )
-            : ListView.separated(
+            : campaigns.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(48),
+                        child: Column(
+                          children: [
+                            Icon(LucideIcons.tent, size: 48, color: AppColors.textMuted.withValues(alpha: 0.5)),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No campaigns yet.',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Campaigns created by hosts will appear here.',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: campaigns.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),

@@ -24,7 +24,6 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
   int _currentPage = 0;
   Timer? _autoSlideTimer;
   bool _autoSlide = true;
-  bool _userInteracted = false;
 
   @override
   void initState() {
@@ -72,7 +71,6 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
   void _toggleAutoSlide() {
     setState(() {
       _autoSlide = !_autoSlide;
-      _userInteracted = true;
     });
     if (_autoSlide) {
       _startAutoSlide();
@@ -83,13 +81,6 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final campaignsAsync = ref.watch(campaignsProvider);
-    final promoted = campaignsAsync.when(
-      loading: () => <Campaign>[],
-      error: (_, __) => <Campaign>[],
-      data: (items) => items.where((c) => c.promoted).toList(),
-    );
-
     final items = _getItems();
     if (items.isEmpty) return const SizedBox.shrink();
 
@@ -232,7 +223,7 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                               FilledButton(
                                 onPressed: () => context.push('/campaign/${c.id}'),
                                 style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.textDark),
-                                child: const Text('Give now'),
+                                child: const Text('Give Now'),
                               ),
                             ],
                           ),
@@ -268,7 +259,7 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Buy mobile airtime',
+                        Text('Buy Mobile Airtime',
                             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textDark)),
                         const SizedBox(height: 6),
                         Text('Top up any Airtel or Zamtel number in Zambia instantly. Every purchase earns you Kingdom Sponsor credits.',
@@ -310,7 +301,7 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Airtime rewards',
+                        Text('Airtime Rewards',
                             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppColors.textDark)),
                         const SizedBox(height: 6),
                         Text("Soon you'll earn airtime credit for every donation you make and share. The more you give, the more you get back.",

@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../../core/api_client.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
@@ -67,7 +68,7 @@ class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScree
               error: (e, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('$e', textAlign: TextAlign.center),
+                  child: Text(friendlyError(e), textAlign: TextAlign.center),
                 ),
               ),
               data: (data) {
@@ -145,6 +146,7 @@ class AdminDisbursementsScreen extends ConsumerStatefulWidget {
 class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScreen> {
   int _balanceCents = 0;
   bool _balanceLoading = true;
+  String? _balanceError;
 
   @override
   void initState() {
@@ -153,11 +155,12 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
   }
 
   Future<void> _loadBalance() async {
+    setState(() { _balanceLoading = true; _balanceError = null; });
     try {
       final res = await ref.read(apiClientProvider).getWalletBalance();
       if (mounted) setState(() { _balanceCents = res['balanceCents'] as int? ?? 0; _balanceLoading = false; });
     } catch (_) {
-      if (mounted) setState(() => _balanceLoading = false);
+      if (mounted) setState(() { _balanceLoading = false; _balanceError = 'Could not fetch the wallet balance.'; });
     }
   }
 
@@ -184,7 +187,7 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     }
   }
@@ -220,19 +223,55 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
               onPressed: busy ? null : () async {
                 setDialogState(() => busy = true);
                 try {
-                  final amount = (double.tryParse(amountController.text.trim()) ?? 0) * 100;
+                  final amount = _parseAmountCents(amountController.text.trim());
                   final phone = phoneController.text.trim();
-                  final res = await ref.read(apiClientProvider).adminWithdraw(amount.round(), phone);
+                  if (amount == null || amount <= 0) {
+                    setDialogState(() => busy = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Enter a valid amount (e.g. 50.00)')),
+                      );
+                    }
+                    return;
+                  }
+                  if (!_balanceLoading && _balanceError == null && amount > _balanceCents) {
+                    setDialogState(() => busy = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Amount exceeds the wallet balance.')),
+                      );
+                    }
+                    return;
+                  }
+                  if (!_balanceLoading && _balanceError != null) {
+                    setDialogState(() => busy = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Wallet balance is unavailable — try again shortly.')),
+                      );
+                    }
+                    return;
+                  }
+                  if (!RegExp(r'^\+[1-9]\d{6,14}$').hasMatch(phone)) {
+                    setDialogState(() => busy = false);
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Enter a complete phone number (e.g. +260 977 123 456).')),
+                      );
+                    }
+                    return;
+                  }
+                  final res = await ref.read(apiClientProvider).adminWithdraw(amount, phone);
                   if (ctx.mounted) {
                     Navigator.pop(ctx, true);
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(ctx).showSnackBar(
                       SnackBar(content: Text(res['message'] as String? ?? 'Withdrawal initiated')),
                     );
                   }
                 } catch (e) {
                   setDialogState(() => busy = false);
                   if (ctx.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(friendlyError(e))));
                   }
                 }
               },
@@ -277,9 +316,23 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('Lipila wallet balance', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
-                      _balanceLoading
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Text('K${(_balanceCents / 100).toStringAsFixed(0)}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                      if (_balanceLoading)
+                        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      else if (_balanceError != null)
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(_balanceError!,
+                                  style: TextStyle(color: AppColors.danger, fontSize: 13)),
+                            ),
+                            TextButton(
+                              onPressed: _loadBalance,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        )
+                      else
+                        Text(formatKwacha(_balanceCents), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                     ],
                   ),
                 ),
@@ -300,7 +353,7 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
           Expanded(
             child: ledger.when(
               loading: () => const Center(child: AppIconSpinner()),
-              error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('$e', textAlign: TextAlign.center))),
+              error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), textAlign: TextAlign.center))),
               data: (data) {
                 final disbs = data.disbursements;
                 return RefreshIndicator(
@@ -334,7 +387,7 @@ class _TxTile extends StatelessWidget {
       child: ListTile(
         leading: const Icon(LucideIcons.coins, color: AppColors.primary),
         title: Text(
-          '${tx.displayName} · ${formatKwacha(tx.amountCents)}',
+          '${tx.displayName} Â· ${formatKwacha(tx.amountCents)}',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
@@ -441,11 +494,11 @@ class _DisbTile extends StatelessWidget {
             ],
             if (d.lipilaFeeCents > 0) ...[
               const SizedBox(height: 4),
-              Text('Lipila fee: ${formatKwacha(d.lipilaFeeCents)}'),
+              Text('Lipila processing fee: ${formatKwacha(d.lipilaFeeCents)}'),
             ],
             if (d.platformFeeCents > 0) ...[
               const SizedBox(height: 4),
-              Text('Platform fee: ${formatKwacha(d.platformFeeCents)}'),
+              Text('Platform processing fee: ${formatKwacha(d.platformFeeCents)}'),
             ],
             const SizedBox(height: 4),
             Text('Date: ${d.createdAt}'),
@@ -487,6 +540,26 @@ class _StatusChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Parses a Kwacha amount string (e.g. "50.00") into integer cents.
+/// Returns null if the input is not a valid non-negative amount.
+int? _parseAmountCents(String text) {
+  final cleaned = text.trim();
+  if (cleaned.isEmpty) return null;
+  final parts = cleaned.split('.');
+  if (parts.length > 2) return null;
+  final wholeStr = parts[0].replaceAll(RegExp(r'[^0-9]'), '');
+  if (wholeStr.isEmpty) return null;
+  final whole = int.tryParse(wholeStr);
+  if (whole == null) return null;
+  int cents = 0;
+  if (parts.length == 2) {
+    final frac = parts[1].padRight(2, '0');
+    if (frac.length > 2 || int.tryParse(frac.substring(0, 2)) == null) return null;
+    cents = int.parse(frac.substring(0, 2));
+  }
+  return whole * 100 + cents;
 }
 
 class _Empty extends StatelessWidget {

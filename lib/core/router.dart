@@ -131,11 +131,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/host/create',
-            builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
-              if (!isAdmin) return const CampaignListScreen();
-              return const CreateCampaignScreen();
-            },
+            builder: (context, state) => const CreateCampaignScreen(),
           ),
           GoRoute(
             path: '/host/edit/:id',

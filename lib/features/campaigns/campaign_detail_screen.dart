@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -63,7 +63,7 @@ class CampaignDetailScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('$e', textAlign: TextAlign.center),
+                Text(friendlyError(e), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => ref.invalidate(campaignDetailProvider(campaignId)),
@@ -529,7 +529,7 @@ class _DetailBody extends ConsumerWidget {
                           ),
                           onPressed: () => context.push('/donate/${c.id}'),
                           icon: const Icon(LucideIcons.heartHandshake),
-                          label: const Text('Donate now'),
+                          label: const Text('Donate Now'),
                         ),
                 ),
               ],
@@ -614,7 +614,7 @@ class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        '${a['author'] ?? 'Host'} · ${(a['createdAt'] as String? ?? '').replaceFirst(' ', ' · ')}',
+                        '${a['author'] ?? 'Host'} Â· ${(a['createdAt'] as String? ?? '').replaceFirst(' ', ' Â· ')}',
                       ),
                     ),
                 ],
