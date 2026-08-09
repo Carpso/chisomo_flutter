@@ -158,38 +158,145 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
     setState(() { _balanceLoading = true; _balanceError = null; });
     try {
       final res = await ref.read(apiClientProvider).getWalletBalance();
-      if (mounted) setState(() { _balanceCents = res['balanceCents'] as int? ?? 0; _balanceLoading = false; });
+      if (mounted) {
+        if (res['ok'] == false) {
+          setState(() {
+            _balanceLoading = false;
+            _balanceError = res['error'] as String? ?? 'Could not fetch the wallet balance.';
+          });
+        } else {
+          setState(() { _balanceCents = res['balanceCents'] as int? ?? 0; _balanceLoading = false; });
+        }
+      }
     } catch (_) {
       if (mounted) setState(() { _balanceLoading = false; _balanceError = 'Could not fetch the wallet balance.'; });
     }
   }
 
   Future<void> _triggerDisburse() async {
-    final confirmed = await showDialog<bool>(
+    final api = ref.read(apiClientProvider);
+    List<dynamic> eligible = [];
+    bool loading = true;
+    String? error;
+
+    await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Trigger auto-disburse?'),
-        content: const Text('This will attempt to disburse all eligible campaign balances now.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Trigger')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          if (loading) {
+            api.getEligiblePayouts().then((list) {
+              if (ctx.mounted) setDialogState(() { eligible = list; loading = false; });
+            }).catchError((e) {
+              if (ctx.mounted) setDialogState(() { error = friendlyError(e); loading = false; });
+            });
+          }
+          return AlertDialog(
+            title: const Text('Payout approval'),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: loading
+                  ? const Center(child: AppIconSpinner())
+                  : error != null
+                      ? Center(child: Text(error!, textAlign: TextAlign.center))
+                      : eligible.isEmpty
+                          ? const Center(child: Text('No campaigns have a balance to disburse.'))
+                          : ListView.separated(
+                              itemCount: eligible.length,
+                              separatorBuilder: (_, _) => const SizedBox(height: 6),
+                              itemBuilder: (context, i) {
+                                final c = eligible[i];
+                                final title = c['title'] as String? ?? '';
+                                final hostPhone = c['hostPhone'] as String? ?? '';
+                                final available = c['availableCents'] as int? ?? 0;
+                                final minWithdraw = c['minWithdrawCents'] as int? ?? 20000;
+                                final platformFee = c['platformFeeCents'] as int? ?? 0;
+                                final lipilaFee = c['lipilaFeeCents'] as int? ?? 0;
+                                final hostReceives = c['payoutCents'] as int? ?? 0;
+                                return Card(
+                                  margin: EdgeInsets.zero,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        const SizedBox(height: 4),
+                                        Text('Host: $hostPhone', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        Text('Available: ${formatKwacha(available)}', style: const TextStyle(fontSize: 13)),
+                                        Text('Min payout: ${formatKwacha(minWithdraw)}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        const Divider(height: 10),
+                                        Text('Platform fee: ${formatKwacha(platformFee)}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        Text('Lipila fee: ${formatKwacha(lipilaFee)}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        Text('Host receives: ${formatKwacha(hostReceives)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: () async {
+                                                  setDialogState(() => loading = true);
+                                                  try {
+                                                    await api.disburseCampaign(c['id'] as int);
+                                                    if (ctx.mounted) {
+                                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                                        SnackBar(content: Text('Payout of ${formatKwacha(hostReceives)} initiated')),
+                                                      );
+                                                      eligible.removeAt(i);
+                                                      setDialogState(() => loading = false);
+                                                    }
+                                                  } catch (e) {
+                                                    if (ctx.mounted) {
+                                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                                        SnackBar(content: Text(friendlyError(e))),
+                                                      );
+                                                      setDialogState(() => loading = false);
+                                                    }
+                                                  }
+                                                },
+                                                icon: const Icon(LucideIcons.send, size: 14),
+                                                label: const Text('Approve & disburse'),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+              if (eligible.isNotEmpty)
+                FilledButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      final res = await api.triggerDisburse();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(res['message'] as String? ?? 'Auto-disburse triggered')),
+                        );
+                        ref.invalidate(adminLedgerProvider);
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+                      }
+                    }
+                  },
+                  icon: const Icon(LucideIcons.zap, size: 14),
+                  label: const Text('Disburse all'),
+                ),
+            ],
+          );
+        },
       ),
     );
-    if (confirmed != true) return;
-    try {
-      final res = await ref.read(apiClientProvider).triggerDisburse();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['message'] as String? ?? 'Disburse triggered')),
-        );
-        ref.invalidate(adminLedgerProvider);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-      }
-    }
+    await _loadBalance();
+    ref.invalidate(adminLedgerProvider);
   }
 
   Future<void> _showWithdrawDialog() async {
@@ -201,9 +308,11 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Manual withdrawal'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               TextField(
                 controller: amountController,
                 keyboardType: TextInputType.number,
@@ -215,7 +324,8 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(labelText: 'Phone number', hintText: '+260...'),
               ),
-            ],
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: busy ? null : () => Navigator.pop(ctx, false), child: const Text('Cancel')),
@@ -295,82 +405,133 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
         actions: [
           IconButton(icon: const Icon(LucideIcons.refreshCw), onPressed: () { ref.invalidate(adminLedgerProvider); _loadBalance(); }),
         ],
-      ),
-      body: Column(
-        children: [
-          // Wallet balance card
-          Container(
-            margin: const EdgeInsets.all(12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [AppColors.primary.withValues(alpha: 0.1), AppColors.gold.withValues(alpha: 0.08)]),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+       ),
+      body: RefreshIndicator(
+        onRefresh: () async { ref.invalidate(adminLedgerProvider); await _loadBalance(); },
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: _walletCard(),
+              ),
             ),
-            child: Row(
-              children: [
-                const Icon(LucideIcons.wallet, color: AppColors.gold, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Lipila wallet balance', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
-                      if (_balanceLoading)
-                        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      else if (_balanceError != null)
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(_balanceError!,
-                                  style: TextStyle(color: AppColors.danger, fontSize: 13)),
-                            ),
-                            TextButton(
-                              onPressed: _loadBalance,
-                              child: const Text('Retry'),
-                            ),
-                          ],
-                        )
-                      else
-                        Text(formatKwacha(_balanceCents), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                    ],
+            const SliverToBoxAdapter(child: SizedBox(height: 12)),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  'Lipila transactions',
+                  style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: _triggerDisburse,
-                  icon: const Icon(LucideIcons.zap, size: 14),
-                  label: const Text('Disburse'),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 6)),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              sliver: ledger.when(
+                loading: () => const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: AppIconSpinner()),
                 ),
-                const SizedBox(width: 6),
-                FilledButton.icon(
-                  onPressed: _showWithdrawDialog,
-                  icon: const Icon(LucideIcons.send, size: 16),
-                  label: const Text('Withdraw'),
+                error: (e, _) => SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(friendlyError(e), textAlign: TextAlign.center),
+                  ),
+                ),
+                data: (data) {
+                  final disbs = data.disbursements;
+                  if (disbs.isEmpty) {
+                    return const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _Empty(message: 'No payouts or fee settlements yet.'),
+                    );
+                  }
+                  return SliverList.separated(
+                    itemCount: disbs.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (context, i) => _DisbTile(d: disbs[i]),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _walletCard() {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.wallet, color: AppColors.gold, size: 24),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Lipila wallet balance',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+                ),
+                if (_balanceLoading)
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  IconButton(
+                    tooltip: 'Refresh balance',
+                    icon: const Icon(LucideIcons.refreshCw, size: 16),
+                    onPressed: _loadBalance,
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_balanceError != null)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_balanceError!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                  const SizedBox(height: 4),
+                  OutlinedButton(onPressed: _loadBalance, child: const Text('Retry')),
+                ],
+              )
+            else
+              Text(
+                formatKwacha(_balanceCents),
+                style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _triggerDisburse,
+                    icon: const Icon(LucideIcons.zap, size: 14),
+                    label: const Text('Disburse'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _showWithdrawDialog,
+                    icon: const Icon(LucideIcons.send, size: 14),
+                    label: const Text('Withdraw'),
+                  ),
                 ),
               ],
             ),
-          ),
-          Expanded(
-            child: ledger.when(
-              loading: () => const Center(child: AppIconSpinner()),
-              error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), textAlign: TextAlign.center))),
-              data: (data) {
-                final disbs = data.disbursements;
-                return RefreshIndicator(
-                  onRefresh: () async => ref.invalidate(adminLedgerProvider),
-                  child: disbs.isEmpty
-                      ? const _Empty(message: 'No payouts or fee settlements yet.')
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          itemCount: disbs.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 6),
-                          itemBuilder: (context, i) => _DisbTile(d: disbs[i]),
-                        ),
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -387,7 +548,7 @@ class _TxTile extends StatelessWidget {
       child: ListTile(
         leading: const Icon(LucideIcons.coins, color: AppColors.primary),
         title: Text(
-          '${tx.displayName} Â· ${formatKwacha(tx.amountCents)}',
+          '${tx.displayName} · ${formatKwacha(tx.amountCents)}',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
@@ -569,13 +730,15 @@ class _Empty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        const SizedBox(height: 120),
-        Icon(LucideIcons.inbox, size: 48, color: AppColors.textMuted),
-        const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted)),
-      ],
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(LucideIcons.inbox, size: 48, color: AppColors.textMuted),
+          const SizedBox(height: 12),
+          Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted)),
+        ],
+      ),
     );
   }
 }

@@ -1,7 +1,7 @@
 name: kingdom_sponsor_app
 description: "Kingdom Sponsor - neutral fundraising platform app."
 publish_to: 'none'
-version: 0.4.1
+version: 0.5.3
 
 environment:
   sdk: ^3.9.0
@@ -34,6 +34,8 @@ dependencies:
   permission_handler: 12.0.0
   flutter_local_notifications: ^20.1.0
   smooth_page_indicator: ^1.1.0
+  package_info_plus: ^9.0.1
+  share_plus: ^12.0.2
 
 
 dev_dependencies:
@@ -48,12 +50,56 @@ flutter:
   assets:
     - .env
     - assets/kingdom_sponsor_app_icon.jpg
+    - assets/app_icon_circle.png
+    - assets/airtel_icon.jpg
+    - assets/mtn_icon.webp
+    - assets/zamtel_icon.jpg
+    - assets/zedmobile_icon.jpg
+    - assets/play_store_badge.png
+    - assets/campaign_samples/sample_1.png
+    - assets/campaign_samples/sample_2.png
+    - assets/campaign_samples/sample_3.png
+    - assets/campaign_samples/sample_4.png
+    - assets/campaign_samples/sample_5.png
+    - assets/campaign_samples/cat_church_ministry.png
+    - assets/campaign_samples/cat_missions.png
+    - assets/campaign_samples/cat_worship_music.png
+    - assets/campaign_samples/cat_education.png
+    - assets/campaign_samples/cat_bursary.png
+    - assets/campaign_samples/cat_medical.png
+    - assets/campaign_samples/cat_disability.png
+    - assets/campaign_samples/cat_funeral.png
+    - assets/campaign_samples/cat_children.png
+    - assets/campaign_samples/cat_youth_sports.png
+    - assets/campaign_samples/cat_marriage_family.png
+    - assets/campaign_samples/cat_community.png
+    - assets/campaign_samples/cat_food_water.png
+    - assets/campaign_samples/cat_disaster.png
+    - assets/campaign_samples/cat_environment.png
+    - assets/campaign_samples/cat_church_ministry_real.jpg
+    - assets/campaign_samples/cat_missions_real.jpg
+    - assets/campaign_samples/cat_worship_music_real.jpg
+    - assets/campaign_samples/cat_education_real.jpg
+    - assets/campaign_samples/cat_bursary_real.jpg
+    - assets/campaign_samples/cat_medical_real.jpg
+    - assets/campaign_samples/cat_disability_real.jpg
+    - assets/campaign_samples/cat_funeral_real.jpg
+    - assets/campaign_samples/cat_children_real.jpg
+    - assets/campaign_samples/cat_youth_sports_real.jpg
+    - assets/campaign_samples/cat_marriage_family_real.jpg
+    - assets/campaign_samples/cat_community_real.jpg
+    - assets/campaign_samples/cat_food_water_real.jpg
+    - assets/campaign_samples/cat_disaster_real.jpg
+    - assets/campaign_samples/cat_environment_real.jpg
+    - assets/campaign_samples/cat_agriculture_real.jpg
+    - assets/campaign_samples/cat_business_real.jpg
+  # Sample campaign images hosts can pick from when creating a campaign.
 
-# App-icon generation from the dedicated icon file. See assets/kingdom_sponsor_app_icon.jpg.
+# App-icon generation from the circular brand icon. See assets/app_icon_circle.png.
+# Alpha is kept so the transparent corners render as a true circle on the launcher.
 flutter_launcher_icons:
-  image_path: "assets/kingdom_sponsor_app_icon.jpg"
+  image_path: "assets/app_icon_circle.png"
   android: "ic_launcher"
   ios: true
   web:
-    image_path: "assets/kingdom_sponsor_app_icon.jpg"
-  remove_alpha: true
+    image_path: "assets/app_icon_circle.png"

@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
 import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_brand_icon.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
+import '../host/create_campaign_screen.dart';
 
 class AdminCampaignsScreen extends ConsumerStatefulWidget {
   const AdminCampaignsScreen({super.key});
@@ -21,6 +26,11 @@ class AdminCampaignsScreen extends ConsumerStatefulWidget {
 class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
   List<Campaign>? _campaigns;
   String? _error;
+
+  static String _centsToKwacha(int cents) {
+    final t = (cents / 100).toStringAsFixed(2);
+    return t.endsWith('.00') ? t.substring(0, t.length - 3) : t;
+  }
 
   @override
   void initState() {
@@ -125,31 +135,135 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
     final titleController = TextEditingController(text: campaign.title);
     final descriptionController = TextEditingController(text: campaign.description);
     final goalController = TextEditingController(
-      text: campaign.hasGoal ? (campaign.goalCents / 100).toString() : '',
+      text: campaign.hasGoal ? _centsToKwacha(campaign.goalCents) : '',
     );
     final minWithdrawController = TextEditingController(
-      text: campaign.minWithdrawCents != null ? (campaign.minWithdrawCents! / 100).toString() : '',
+      text: campaign.minWithdrawCents != null ? _centsToKwacha(campaign.minWithdrawCents!) : '',
     );
     final minSponsorsController = TextEditingController(text: '1');
     final endsAtController = TextEditingController(
       text: campaign.endsAt != null ? safeDate(campaign.endsAt) : '',
     );
     String status = campaign.status;
+    String category =
+        kCampaignCategories.contains(campaign.category) ? campaign.category : 'Other';
+    String visibility = campaign.visibility == 'private' ? 'private' : 'public';
+    String campaignType =
+        kCampaignTypes.containsKey(campaign.campaignType) ? campaign.campaignType : 'community';
     String? errorText;
+    Uint8List? pickedBytes;
+    String? pickedName;
     final messenger = ScaffoldMessenger.of(context);
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: const Text('Edit campaign'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit campaign'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: SizedBox(
+                          width: 72,
+                          height: 72,
+                          child: pickedBytes == null
+                              ? CampaignImage(campaign: campaign, fit: BoxFit.cover)
+                              : Image.memory(pickedBytes!, fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Campaign image',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text(
+                              pickedBytes == null
+                                  ? (campaign.logoUrl ?? campaign.imageUrl) != null
+                                      ? 'Current image shown. Replace it to update.'
+                                      : 'No image yet. Add one to make the campaign stand out.'
+                                  : 'New image selected. Save to upload.',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                  height: 1.3),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Replace image',
+                        onPressed: () async {
+                          final xfile = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 85,
+                          );
+                          if (xfile != null) {
+                            final bytes = await xfile.readAsBytes();
+                            setDialogState(() {
+                              pickedBytes = bytes;
+                              pickedName = xfile.name;
+                            });
+                          }
+                        },
+                        icon: const Icon(LucideIcons.imagePlus,
+                            size: 22, color: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Or pick a sample image:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final path in kSampleCampaignImages)
+                        GestureDetector(
+                          onTap: () async {
+                            final data = await rootBundle.load(path);
+                            setDialogState(() {
+                              pickedBytes = data.buffer.asUint8List();
+                              pickedName = path.split('/').last;
+                            });
+                          },
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: pickedName == path.split('/').last
+                                    ? AppColors.gold
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                            ),
+                            child: Image.asset(path, fit: BoxFit.cover),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   TextField(
                     controller: titleController,
                     decoration: const InputDecoration(
@@ -212,6 +326,53 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                       prefixIcon: Icon(LucideIcons.flag, size: 18),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    items: kCampaignCategories
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => category = v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Category',
+                      prefixIcon: Icon(LucideIcons.tags, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: visibility,
+                    items: const [
+                      DropdownMenuItem(value: 'public', child: Text('Public')),
+                      DropdownMenuItem(value: 'private', child: Text('Private')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => visibility = v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Visibility',
+                      prefixIcon: Icon(LucideIcons.eye, size: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: campaignType,
+                    items: [
+                      for (final e in kCampaignTypes.entries)
+                        DropdownMenuItem(value: e.key, child: Text(e.value)),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => campaignType = v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Campaign type',
+                      prefixIcon: Icon(LucideIcons.layoutGrid, size: 18),
+                    ),
+                  ),
                   if (errorText != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -257,7 +418,6 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
             ],
           ),
         ),
-      ),
     );
 
     titleController.dispose();
@@ -292,9 +452,25 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
       body['endsAt'] = null;
     }
     body['status'] = status;
+    body['category'] = category;
+    body['visibility'] = visibility;
+    body['campaignType'] = campaignType;
 
     try {
-      await ref.read(apiClientProvider).updateCampaign(campaign.id, body);
+      await ref.read(apiClientProvider).adminUpdateCampaign(campaign.id, body);
+      if (pickedBytes != null && pickedName != null) {
+        try {
+          await ref
+              .read(apiClientProvider)
+              .uploadLogo(campaign.id, pickedBytes!, pickedName!);
+        } on ApiException catch (e) {
+          if (mounted) {
+            messenger.showSnackBar(SnackBar(
+                content:
+                    Text('Campaign saved, but image upload failed: ${e.message}')));
+          }
+        }
+      }
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('"${campaign.title}" updated.')),
@@ -309,6 +485,78 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not update. Try again.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _promoteCampaign(Campaign campaign) async {
+    var days = 7;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Promote campaign'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Put "${campaign.title}" in the top-5 promoted list. '
+                'This is free — no payment is collected from the host.',
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: days,
+                items: [7, 14, 30]
+                    .map((d) => DropdownMenuItem(
+                          value: d,
+                          child: Text('$d days'),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setDialogState(() => days = v);
+                },
+                decoration: const InputDecoration(labelText: 'Promote for'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(LucideIcons.rocket, size: 16),
+              label: const Text('Promote'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .adminPromoteCampaign(campaign.id, days: days);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+          content: Text(res['message'] as String? ?? '"${campaign.title}" promoted.')));
+      await _load();
+      ref.invalidate(adminDataProvider);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not promote. Try again.')),
         );
       }
     }
@@ -348,7 +596,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                         padding: const EdgeInsets.all(48),
                         child: Column(
                           children: [
-                            Icon(LucideIcons.tent, size: 48, color: AppColors.textMuted.withValues(alpha: 0.5)),
+                            AppBrandIcon(size: 48),
                             const SizedBox(height: 12),
                             Text(
                               'No campaigns yet.',
@@ -375,16 +623,24 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                   final deleted = c.status == 'deleted';
                   return Card(
                     child: ListTile(
-                      leading: CircleAvatar(
-                        radius: 18,
-                        backgroundColor:
-                            (deleted ? AppColors.textMuted : AppColors.primary).withValues(alpha: 0.12),
-                        child: Icon(
-                          deleted ? LucideIcons.archive : LucideIcons.tent,
-                          size: 18,
-                          color: deleted ? AppColors.textMuted : AppColors.primary,
-                        ),
-                      ),
+                      leading: deleted
+                          ? CircleAvatar(
+                              radius: 18,
+                              backgroundColor: AppColors.textMuted.withValues(alpha: 0.12),
+                              child: Icon(
+                                LucideIcons.archive,
+                                size: 18,
+                                color: AppColors.textMuted,
+                              ),
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: CampaignImage(campaign: c, fit: BoxFit.cover),
+                              ),
+                            ),
                       title: Text(
                         c.title,
                         maxLines: 1,
@@ -402,6 +658,19 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                           : Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (c.promoted)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 6),
+                                    child: Icon(LucideIcons.trendingUp,
+                                        size: 18, color: AppColors.primary),
+                                  )
+                                else
+                                  IconButton(
+                                    tooltip: 'Promote campaign',
+                                    icon: const Icon(LucideIcons.rocket,
+                                        color: AppColors.primary),
+                                    onPressed: () => _promoteCampaign(c),
+                                  ),
                                 IconButton(
                                   tooltip: 'Edit campaign',
                                   icon: const Icon(LucideIcons.pencil, color: AppColors.primary),

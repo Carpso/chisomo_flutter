@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -364,6 +365,9 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
   final _reasonController = TextEditingController();
   bool _submitting = false;
   String? _error;
+  String _kycType = 'nrc';
+  String? _kycDocUrl;
+  bool _kycUploading = false;
 
   @override
   void dispose() {
@@ -386,12 +390,41 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
       _error = null;
     });
     try {
-      await ref.read(hostProvider.notifier).applyAsHost(org: org, role: role, reason: reason);
+      await ref.read(hostProvider.notifier).applyAsHost(
+            org: org,
+            role: role,
+            reason: reason,
+            kycType: _kycType,
+            kycDocUrl: _kycDocUrl,
+          );
       widget.refreshHost();
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _pickKycDoc() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 80,
+    );
+    if (file == null) return;
+    setState(() => _kycUploading = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final res = await ref.read(apiClientProvider).uploadKycDoc(bytes, file.name);
+      if (mounted) setState(() => _kycDocUrl = res['docUrl'] as String?);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: ${friendlyError(e)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _kycUploading = false);
     }
   }
 
@@ -522,6 +555,40 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
                 prefixIcon: Icon(LucideIcons.flag, size: 20),
               ),
             ),
+            const SizedBox(height: 12),
+            const Text(
+              'Verification (KYC) — helps donors trust that you are real.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _kycType,
+              items: const [
+                DropdownMenuItem(value: 'nrc', child: Text('National Registration Card (NRC)')),
+                DropdownMenuItem(value: 'ngo_cert', child: Text('NGO / registration certificate')),
+                DropdownMenuItem(value: 'endorsement', child: Text('Community leader endorsement')),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _kycType = v);
+              },
+              decoration: const InputDecoration(
+                labelText: 'Document type',
+                prefixIcon: Icon(LucideIcons.fileBadge, size: 18),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _kycUploading ? null : _pickKycDoc,
+              icon: _kycUploading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(_kycDocUrl == null ? LucideIcons.upload : LucideIcons.fileCheck,
+                      size: 16, color: AppColors.primary),
+              label: Text(_kycUploading
+                  ? 'Uploading…'
+                  : _kycDocUrl == null
+                      ? 'Upload a document photo (optional)'
+                      : 'Document uploaded'),
+            ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -595,13 +662,13 @@ class _HostCampaignCard extends ConsumerWidget {
     final available = campaign.availableCents ?? 0;
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
     // Calculate effective payout after Lipila + platform processing fees.
-    // Platform processing fee = ZMW 0.2400 + 1% (K3 minimum), same as collections.
+    // Platform processing fee = K0.24 + 1% (K3 minimum), same as collections.
     final lipilaFee = (available * 1.5 / 100).round();
     final platformFee = [324, (available * 1 / 100).round() + 24].reduce((a, b) => a > b ? a : b);
     final netPayout = available - lipilaFee - platformFee;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
@@ -635,8 +702,19 @@ class _HostCampaignCard extends ConsumerWidget {
                   child: Text(
                     campaign.title,
                     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (campaign.isPrivate)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Tooltip(
+                      message: 'Private campaign — only people with the link can see it',
+                      child: const Icon(LucideIcons.lock,
+                          size: 15, color: AppColors.textMuted),
+                    ),
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -673,54 +751,65 @@ class _HostCampaignCard extends ConsumerWidget {
             const SizedBox(height: 6),
             Row(
               children: [
-                Text(
-                  'Available: ${formatKwacha(available)}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
+                Expanded(
+                  child: Text(
+                    'Available: ${formatKwacha(available)}',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => showModalBottomSheet(
-                    context: context,
-                    showDragHandle: true,
-                    builder: (ctx) => SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'How Available is calculated',
-                              style: Theme.of(ctx)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Available = confirmed donations minus anything already paid out. '
-                              'Processing fees (ZMW 0.2400 + 1% (K3 minimum) + Lipila charges) are paid by the '
-                              'donor on top of their gift, so the campaign receives the full gift amount.\n\n'
-                              'Example: a K50 donation gives K50.00 to the campaign. The donor pays '
-                              'K54.49 (K50.00 + K4.49 processing fees: K3.24 platform — K3.00 minimum + K0.24 — '
-                              'plus K1.25 Lipila). Withdraw when the balance reaches the minimum shown below.',
-                              style: Theme.of(ctx)
-                                  .textTheme
-                                  .bodyMedium
-                                  ?.copyWith(color: AppColors.textMuted),
-                            ),
-                          ],
+                Tooltip(
+                  message: 'How Available is calculated',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => showModalBottomSheet(
+                      context: context,
+                      showDragHandle: true,
+                      builder: (ctx) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'How Available is calculated',
+                                style: Theme.of(ctx)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Available = confirmed donations minus anything already paid out. '
+                                'Processing fees (K0.24 + 1% (K3 minimum) + Lipila charges) are paid by the '
+                                'donor on top of their gift, so the campaign receives the full gift amount.\n\n'
+                                'Example: a K50 donation gives K50.00 to the campaign. The donor pays '
+                                'K54.49 (K50.00 + K4.49 processing fees: K3.24 platform — K3.00 minimum + K0.24 — '
+                                'plus K1.25 Lipila). Withdraw when the balance reaches the minimum shown below.',
+                                style: Theme.of(ctx)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: AppColors.textMuted),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  child: const Icon(
-                    LucideIcons.info,
-                    size: 16,
-                    color: AppColors.textMuted,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        LucideIcons.info,
+                        size: 16,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -740,61 +829,66 @@ class _HostCampaignCard extends ConsumerWidget {
             StatefulBuilder(
               builder: (context, setLocalState) {
                 bool withdrawing = false;
-                return Row(
+                return Wrap(
+              spacing: 8,
+              runSpacing: 6,
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: canWithdraw && !withdrawing
-                        ? () async {
-                            setLocalState(() => withdrawing = true);
-                            final messenger = ScaffoldMessenger.of(context);
-                            try {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Confirm withdrawal'),
-                                content: Text(
-                                  'Send ${formatKwacha(netPayout)} to the mobile money number '
-                                  'linked to your account? (${formatKwacha(available)} '
-                                  'minus ${formatKwacha(lipilaFee + platformFee)} processing fees.)',
-                                  style: const TextStyle(height: 1.5),
+                ElevatedButton.icon(
+                  onPressed: canWithdraw && !withdrawing
+                      ? () async {
+                          setLocalState(() => withdrawing = true);
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Confirm withdrawal'),
+                              content: Text(
+                                'Send ${formatKwacha(netPayout)} to the mobile money number '
+                                'linked to your account? (${formatKwacha(available)} '
+                                'minus ${formatKwacha(lipilaFee + platformFee)} processing fees.)',
+                                style: const TextStyle(height: 1.5),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancel'),
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('Withdraw'),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirmed != true || !context.mounted) return;
-                            final res = await ref
-                                .read(hostProvider.notifier)
-                                .withdraw(campaign.id);
-                            messenger.showSnackBar(
-                              SnackBar(
-                                content: Text(res['message'] as String? ?? 'Withdrawal initiated'),
-                              ),
-                            );
-                            } finally {
-                              if (context.mounted) setLocalState(() => withdrawing = false);
-                            }
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Withdraw'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true || !context.mounted) return;
+                          try {
+                          final res = await ref
+                              .read(hostProvider.notifier)
+                              .withdraw(campaign.id);
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(res['message'] as String? ?? 'Withdrawal initiated'),
+                            ),
+                          );
+                          } on ApiException catch (e) {
+                            if (context.mounted) messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                          } catch (_) {
+                            if (context.mounted) messenger.showSnackBar(const SnackBar(content: Text('Could not start the withdrawal. Check your connection and try again.')));
                           }
-                        : null,
-                    icon: const Icon(LucideIcons.send, size: 16),
-                    label: Text(
-                      canWithdraw
-                          ? withdrawing ? 'Processing…' : 'Withdraw ${formatKwacha(netPayout)}'
-                          : 'Min ${formatKwacha(campaign.minWithdrawCents ?? 0)}',
-                      style: const TextStyle(fontSize: 13),
-                    ),
+                          } finally {
+                            if (context.mounted) setLocalState(() => withdrawing = false);
+                          }
+                        }
+                      : null,
+                  icon: const Icon(LucideIcons.send, size: 16),
+                  label: Text(
+                    canWithdraw
+                        ? withdrawing ? 'Processing…' : 'Withdraw ${formatKwacha(netPayout)}'
+                        : 'Min ${formatKwacha(campaign.minWithdrawCents ?? 0)}',
+                    style: const TextStyle(fontSize: 13),
                   ),
                 ),
-                const SizedBox(width: 8),
                 if (campaign.status == 'active')
                   OutlinedButton.icon(
                     onPressed: () async {
@@ -824,6 +918,7 @@ class _HostCampaignCard extends ConsumerWidget {
                         ),
                       );
                       if (confirmed != true || !context.mounted) return;
+                      try {
                       final res = await ref
                           .read(hostProvider.notifier)
                           .endCampaign(campaign.id);
@@ -832,6 +927,11 @@ class _HostCampaignCard extends ConsumerWidget {
                           content: Text(res['message'] as String? ?? 'Campaign ended'),
                         ),
                       );
+                      } on ApiException catch (e) {
+                        if (context.mounted) messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                      } catch (_) {
+                        if (context.mounted) messenger.showSnackBar(const SnackBar(content: Text('Could not end the campaign. Try again.')));
+                      }
                     },
                     icon: const Icon(LucideIcons.flag, size: 16),
                     label: const Text('End', style: TextStyle(fontSize: 13)),
@@ -843,6 +943,11 @@ class _HostCampaignCard extends ConsumerWidget {
                     label: const Text('Promote', style: TextStyle(fontSize: 13)),
                   ),
                 if (campaign.status != 'deleted')
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/host/edit/${campaign.id}'),
+                    icon: const Icon(LucideIcons.pencil, size: 15),
+                    label: const Text('Edit', style: TextStyle(fontSize: 13)),
+                  ),                if (campaign.status != 'deleted')
                   IconButton(
                     tooltip: 'Request deletion',
                     icon: const Icon(LucideIcons.trash2,
@@ -866,11 +971,10 @@ class _HostCampaignCard extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
+        builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Request to delete campaign?'),
           content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -932,7 +1036,6 @@ class _HostCampaignCard extends ConsumerWidget {
                   : const Text('Send Request'),
             ),
           ],
-          ),
         ),
       ),
     );

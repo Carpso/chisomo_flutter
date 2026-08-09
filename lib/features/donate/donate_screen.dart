@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/money.dart';
@@ -36,11 +37,14 @@ class DonateScreen extends ConsumerStatefulWidget {
 
 enum _Phase { form, awaitingPin, done, failed }
 
+enum _PaymentMethod { mobileMoney, card }
+
 class _DonateScreenState extends ConsumerState<DonateScreen> {
   static const _presets = [5000, 10000, 20000, 50000, 100000];
 
   final _amountController = TextEditingController();
   final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   String _phoneE164 = '';
   int _selectedPreset = 10000;
   bool _anonymous = false;
@@ -48,6 +52,8 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   bool _submitting = false;
   bool _recurring = false;
   int _recurringDay = 1;
+  _PaymentMethod _method = _PaymentMethod.mobileMoney;
+  String? _checkoutUrl;
 
   _Phase _phase = _Phase.form;
   String? _referenceId;
@@ -68,6 +74,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     _pollTimer?.cancel();
     _amountController.dispose();
     _nameController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
@@ -78,16 +85,21 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     return (kwacha * 100).round();
   }
 
-  /// Calculate total processing fees (platform + Lipila) for the current amount.
+  /// Calculate total processing fees (platform + Lipila) for the current amount
+  /// and payment method. Cards: 2% (K5 min) + ZMW 0.24 + Lipila's card fee.
   /// Returns null if fees config is unavailable — caller must handle.
   ({int platformFee, int lipilaFee, int totalFee, int totalPay})? _calculateFees(FeesInfo? cfg) {
     final amount = _amountCents;
     if (amount < 100 || cfg == null) return null;
-    final platform = cfg.platformMinFeeCents > (amount * cfg.platformPct / 100).round()
-        ? cfg.platformMinFeeCents
-        : (amount * cfg.platformPct / 100).round();
+    final isCard = _method == _PaymentMethod.card;
+    final pct = isCard ? cfg.cardPct : cfg.platformPct;
+    final minFee = isCard ? cfg.cardMinFeeCents : cfg.platformMinFeeCents;
+    final lipilaPct = isCard ? cfg.cardLipilaPct : cfg.momoPct;
+    final platform = minFee > (amount * pct / 100).round()
+        ? minFee
+        : (amount * pct / 100).round();
     final platformFee = platform + cfg.platformFixedFeeCents;
-    final lipilaFee = (amount * cfg.momoPct / 100).round();
+    final lipilaFee = (amount * lipilaPct / 100).round();
     return (platformFee: platformFee, lipilaFee: lipilaFee, totalFee: platformFee + lipilaFee, totalPay: amount + platformFee + lipilaFee);
   }
 
@@ -117,31 +129,55 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
       );
       return;
     }
+    if (_method == _PaymentMethod.card) {
+      final email = _emailController.text.trim();
+      if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+        setState(() => _error = 'Enter your email address for the card receipt.');
+        return;
+      }
+    }
 
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      final res = await ref
-          .read(apiClientProvider)
-          .post('/api/campaigns/${widget.campaignId}/contribute', {
-            'amountCents': amountCents,
-            'phone': phone,
-            'donorName': _anonymous ? null : _nameController.text.trim(),
-            'isAnonymous': _anonymous,
-            'hideAmount': _hideAmount,
-          });
+      final path = _method == _PaymentMethod.card
+          ? '/api/campaigns/${widget.campaignId}/contribute-card'
+          : '/api/campaigns/${widget.campaignId}/contribute';
+      final res = await ref.read(apiClientProvider).post(path, {
+        'amountCents': amountCents,
+        'phone': phone,
+        'donorName': _anonymous ? null : _nameController.text.trim(),
+        'isAnonymous': _anonymous,
+        'hideAmount': _hideAmount,
+        if (_method == _PaymentMethod.card) 'email': _emailController.text.trim(),
+      });
       setState(() {
         _referenceId = res['referenceId'] as String;
         _phase = _Phase.awaitingPin;
       });
+      if (_method == _PaymentMethod.card) {
+        final url = res['cardRedirectionUrl'] as String? ?? '';
+        _checkoutUrl = url;
+        if (url.isNotEmpty) {
+          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        } else {
+          setState(() => _statusMessage = 'Checkout link not available yet.');
+        }
+      }
       _pollStatus();
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _reopenCheckout() async {
+    final url = _checkoutUrl;
+    if (url == null || url.isEmpty) return;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   Future<void> _resendPrompt() async {
@@ -162,10 +198,14 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _error = e.message);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not resend. Try again.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not resend the prompt. Try again.')),
+        );
       }
     }
   }
@@ -174,7 +214,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     _pollTimer?.cancel();
     var polls = 0;
     var consecutiveErrors = 0;
-    const maxPolls = 40; // ~2 minutes before giving up
+    final maxPolls = _method == _PaymentMethod.card ? 160 : 40; // card: ~8 min
     const maxConsecutiveErrors = 5;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       polls++;
@@ -260,7 +300,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         _Phase.awaitingPin => _AwaitingPin(
           referenceId: _referenceId ?? '',
           phoneE164: _phoneE164,
+          isCard: _method == _PaymentMethod.card,
           onResend: _resendPrompt,
+          onReopenCheckout: _reopenCheckout,
           onCancel: () {
             _pollTimer?.cancel();
             setState(() {
@@ -380,6 +422,42 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             ),
           ),
         const SizedBox(height: 20),
+        Text(
+          'How would you like to pay?',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<_PaymentMethod>(
+          segments: const [
+            ButtonSegment(
+              value: _PaymentMethod.mobileMoney,
+              icon: Icon(LucideIcons.smartphone, size: 18),
+              label: Text('Mobile Money'),
+            ),
+            ButtonSegment(
+              value: _PaymentMethod.card,
+              icon: Icon(LucideIcons.creditCard, size: 18),
+              label: Text('Card'),
+            ),
+          ],
+          selected: {_method},
+          onSelectionChanged: (s) => setState(() => _method = s.first),
+        ),
+        if (_method == _PaymentMethod.card) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email address (for your receipt)',
+              hintText: 'e.g. you@example.com',
+              prefixIcon: Icon(LucideIcons.mail),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         // Fee preview card — rebuilt locally on each keystroke via the
         // controller so the rest of the form (and field focus) stays intact.
         ValueListenableBuilder<TextEditingValue>(
@@ -400,7 +478,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         PhoneField(
           initialValue: _phoneE164.isEmpty ? null : _phoneE164,
           onChanged: (e164) => _phoneE164 = e164,
-          helperText: 'We will send a payment prompt to this number',
+          helperText: _method == _PaymentMethod.card
+              ? 'Linked to your account for receipts and updates'
+              : 'We will send a payment prompt to this number',
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -478,7 +558,11 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           onPressed: (_submitting || _amountCents < 100) ? null : _donate,
           icon: _submitting
               ? const SizedBox.shrink()
-              : const Icon(LucideIcons.heartHandshake),
+              : Icon(
+                  _method == _PaymentMethod.card
+                      ? LucideIcons.creditCard
+                      : LucideIcons.heartHandshake,
+                ),
           label: _submitting
               ? SizedBox(
                   width: 22,
@@ -486,7 +570,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
                   child: AppIconSpinner(size: 22, color: Colors.white),
                 )
               : Text(
-                  'Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}',
+                  _method == _PaymentMethod.card
+                      ? 'Continue to secure checkout'
+                      : 'Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}',
                 ),
         ),
         const SizedBox(height: 8),
@@ -538,11 +624,23 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   Widget _buildFeeNote(BuildContext context, FeesInfo? fees) {
     final theme = Theme.of(context);
-    final text = fees == null
-        ? 'A small processing fee (ZMW 0.2400 + Lipila charges) applies. You will get a payment prompt on your phone.'
-        : 'Processing fees (ZMW 0.2400 + ${formatPct(fees.platformPct)} '
-              '(${formatKwacha(fees.platformMinFeeCents)} minimum) + Lipila charges) apply. '
-              'You will get a payment prompt on your phone.';
+    final fixed = fees?.platformFixedFeeCents ?? 24;
+    final isCard = _method == _PaymentMethod.card;
+    final paymentLine = isCard
+        ? 'You will be redirected to a secure card checkout.'
+        : 'You will get a payment prompt on your phone.';
+    final String text;
+    if (fees == null) {
+      text = 'A small processing fee (${formatKwacha(fixed)} + Lipila charges) applies. $paymentLine';
+    } else if (isCard) {
+      text = 'Processing fees (${formatKwacha(fixed)} + ${formatPct(fees.cardPct)} '
+            '(${formatKwacha(fees.cardMinFeeCents)} minimum) + Lipila card charges) apply. '
+            '$paymentLine';
+    } else {
+      text = 'Processing fees (${formatKwacha(fixed)} + ${formatPct(fees.platformPct)} '
+            '(${formatKwacha(fees.platformMinFeeCents)} minimum) + Lipila charges) apply. '
+            '$paymentLine';
+    }
     return Text(
       text,
       textAlign: TextAlign.center,
@@ -623,9 +721,9 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   }
 
   Widget _buildFailed(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -667,13 +765,17 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 class _AwaitingPin extends ConsumerWidget {
   final String referenceId;
   final String phoneE164;
+  final bool isCard;
   final VoidCallback onResend;
+  final VoidCallback onReopenCheckout;
   final VoidCallback onCancel;
 
   const _AwaitingPin({
     required this.referenceId,
     required this.phoneE164,
+    required this.isCard,
     required this.onResend,
+    required this.onReopenCheckout,
     required this.onCancel,
   });
 
@@ -681,9 +783,9 @@ class _AwaitingPin extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final ussd = ussdCodeForPhone(phoneE164);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -694,29 +796,40 @@ class _AwaitingPin extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
             Text(
-              'Check your phone',
+              isCard ? 'Complete your payment' : 'Check your phone',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'We have sent a payment prompt to your mobile money. Enter your PIN to complete the donation.',
+            Text(
+              isCard
+                  ? 'We opened a secure checkout for your card. Finish the payment there to complete your donation.'
+                  : 'We have sent a payment prompt to your mobile money. Enter your PIN to complete the donation.',
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
-            Text(
-              'If you don\'t see it, dial $ussd on your phone.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-            ),
+            if (!isCard) ...[
+              const SizedBox(height: 8),
+              Text(
+                'If you don\'t see it, dial $ussd on your phone.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+              ),
+            ],
             const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: onResend,
-              icon: const Icon(LucideIcons.refreshCw, size: 16),
-              label: const Text('Resend prompt'),
-            ),
+            if (isCard)
+              OutlinedButton.icon(
+                onPressed: onReopenCheckout,
+                icon: const Icon(LucideIcons.creditCard, size: 16),
+                label: const Text('Reopen checkout'),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: onResend,
+                icon: const Icon(LucideIcons.refreshCw, size: 16),
+                label: const Text('Resend prompt'),
+              ),
             const SizedBox(height: 12),
             TextButton(
               onPressed: onCancel,

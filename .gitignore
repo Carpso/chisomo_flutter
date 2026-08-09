@@ -44,3 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .env
+
+# Local config (not a secret, but machine-specific)
+.env
+
+# Local build log
+build_log.txt
+
+# Android build artifacts
+android/build/

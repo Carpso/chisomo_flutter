@@ -242,6 +242,7 @@ class _PromotableCardState extends ConsumerState<_PromotableCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final campaign = widget.campaign;
+    final slotsFull = (ref.watch(promotionInfoProvider).value?.available ?? 0) == 0;
 
     return Card(
       child: Padding(
@@ -278,7 +279,7 @@ class _PromotableCardState extends ConsumerState<_PromotableCard> {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              onPressed: _promoting
+              onPressed: _promoting || slotsFull
                   ? null
                   : () async {
                       final confirmed = await showDialog<bool>(
@@ -313,6 +314,7 @@ class _PromotableCardState extends ConsumerState<_PromotableCard> {
                             .read(apiClientProvider)
                             .promoteCampaign(campaign.id);
                         ref.invalidate(myPromotionsProvider);
+                        ref.invalidate(hostProvider);
                         if (context.mounted) {
                           await showDialog<void>(
                             context: context,
@@ -342,7 +344,11 @@ class _PromotableCardState extends ConsumerState<_PromotableCard> {
                       }
                     },
               icon: const Icon(LucideIcons.star, size: 16),
-              label: Text(_promoting ? 'Processing…' : 'Promote'),
+              label: Text(slotsFull
+                  ? 'All slots taken'
+                  : _promoting
+                      ? 'Processing…'
+                      : 'Promote'),
             ),
           ],
         ),

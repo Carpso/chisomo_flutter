@@ -185,3 +185,15 @@ class AuthController extends AsyncNotifier<AuthState> {
 
 final authControllerProvider =
     AsyncNotifierProvider<AuthController, AuthState>(AuthController.new);
+
+/// Bumped whenever linked-account state changes (accept/reject/unlink). The
+/// Settings screen watches this so a returning `context.go('/settings')` that
+/// reuses the mounted route still refreshes its links list.
+class LinksVersion extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state++;
+}
+
+final linksVersionProvider = NotifierProvider<LinksVersion, int>(LinksVersion.new);

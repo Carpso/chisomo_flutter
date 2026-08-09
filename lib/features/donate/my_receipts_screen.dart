@@ -91,7 +91,7 @@ class _MyReceiptsScreenState extends ConsumerState<MyReceiptsScreen> {
                           title: const Text('Download your official receipt'),
                           subtitle: const Text(
                               'Every confirmed gift gets a PDF receipt you can keep or share — '
-                              'it shows the total processing fees (ZMW 0.2400 + Lipila + platform cut) '
+                              'it shows the total processing fees (K0.24 + Lipila + platform cut) '
                               'and the amount your campaign received.'),
                         ),
                       ),

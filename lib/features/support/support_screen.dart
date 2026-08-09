@@ -51,94 +51,92 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: const Text('Contact support'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: subject,
-                    maxLength: 120,
-                    decoration: const InputDecoration(
-                      labelText: 'Subject',
-                      hintText: 'What do you need help with?',
-                      prefixIcon: Icon(LucideIcons.messageCircle),
-                    ),
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Contact support'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: subject,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    labelText: 'Subject',
+                    hintText: 'What do you need help with?',
+                    prefixIcon: Icon(LucideIcons.messageCircle),
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: message,
-                    maxLines: 4,
-                    maxLength: 2000,
-                    decoration: const InputDecoration(
-                      labelText: 'Message',
-                      alignLabelWithHint: true,
-                      hintText: 'Describe your issue…',
-                    ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: message,
+                  maxLines: 4,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'Message',
+                    alignLabelWithHint: true,
+                    hintText: 'Describe your issue…',
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ListenableBuilder(
-                listenable: Listenable.merge([subject, message]),
-                builder: (context, _) {
-                  final ready = subject.text.trim().isNotEmpty &&
-                      message.text.trim().isNotEmpty;
-                  return FilledButton(
-                    onPressed: saving || !ready
-                        ? null
-                        : () async {
-                        setDialogState(() => saving = true);
-                        try {
-                          await ref.read(apiClientProvider).createSupportTicket(
-                                subject.text.trim(),
-                                message.text.trim(),
-                              );
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx, true);
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Request sent. The admin will reply shortly.')),
-                            );
-                          }
-                        } on ApiException catch (e) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx)
-                                .showSnackBar(SnackBar(content: Text(e.message)));
-                          }
-                        } catch (_) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(
-                                      content:
-                                          Text('Could not send the request. Try again.')),
-                            );
-                          }
-                        }
-                      },
-                    child: saving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Send'),
-                  );
-                },
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ListenableBuilder(
+              listenable: Listenable.merge([subject, message]),
+              builder: (context, _) {
+                final ready = subject.text.trim().isNotEmpty &&
+                    message.text.trim().isNotEmpty;
+                return FilledButton(
+                  onPressed: saving || !ready
+                      ? null
+                      : () async {
+                          setDialogState(() => saving = true);
+                          try {
+                            await ref.read(apiClientProvider).createSupportTicket(
+                                  subject.text.trim(),
+                                  message.text.trim(),
+                                );
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx, true);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Request sent. The admin will reply shortly.')),
+                              );
+                            }
+                          } on ApiException catch (e) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx)
+                                  .showSnackBar(SnackBar(content: Text(e.message)));
+                            }
+                          } catch (_) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                    content:
+                                        Text('Could not send the request. Try again.')),
+                              );
+                            }
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send'),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -154,11 +152,11 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: Text(asAdmin ? 'Reply to #${ticket['id']}' : 'Add a message'),
-            content: TextField(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(asAdmin ? 'Reply to #${ticket['id']}' : 'Add a message'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: TextField(
               controller: text,
               maxLines: 4,
               maxLength: 2000,
@@ -167,57 +165,57 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                 alignLabelWithHint: true,
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: text,
-                builder: (context, _, __) {
-                  final ready = text.text.trim().isNotEmpty;
-                  return FilledButton(
-                onPressed: saving || !ready
-                    ? null
-                    : () async {
-                        setDialogState(() => saving = true);
-                        try {
-                          await ref
-                              .read(apiClientProvider)
-                              .replySupportTicket(ticket['id'] as int, text.text.trim());
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx, true);
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Reply sent.')),
-                            );
-                          }
-                        } on ApiException catch (e) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx)
-                                .showSnackBar(SnackBar(content: Text(e.message)));
-                          }
-                        } catch (_) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Could not send. Try again.')),
-                            );
-                          }
-                        }
-                      },
-                    child: saving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Send'),
-                  );
-                },
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: text,
+              builder: (context, _, __) {
+                final ready = text.text.trim().isNotEmpty;
+                return FilledButton(
+                  onPressed: saving || !ready
+                      ? null
+                      : () async {
+                          setDialogState(() => saving = true);
+                          try {
+                            await ref
+                                .read(apiClientProvider)
+                                .replySupportTicket(ticket['id'] as int, text.text.trim());
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx, true);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('Reply sent.')),
+                              );
+                            }
+                          } on ApiException catch (e) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx)
+                                  .showSnackBar(SnackBar(content: Text(e.message)));
+                            }
+                          } catch (_) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('Could not send. Try again.')),
+                              );
+                            }
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send'),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -451,6 +449,13 @@ class _StatusChip extends StatelessWidget {
   final String status;
   const _StatusChip({required this.status});
 
+  static String _label(String s) => switch (s) {
+        'open' => 'Awaiting reply',
+        'answered' => 'Answered',
+        'closed' => 'Closed',
+        _ => s,
+      };
+
   @override
   Widget build(BuildContext context) {
     final color = switch (status) {
@@ -466,7 +471,7 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status,
+        _label(status),
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,

@@ -375,9 +375,9 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: Text('Basic: K${(_prices['basic'] ?? 0) / 100}', style: theme.textTheme.bodySmall)),
-                Expanded(child: Text('Pro: K${(_prices['pro'] ?? 0) / 100}', style: theme.textTheme.bodySmall)),
-                Expanded(child: Text('Annual: K${(_prices['annual'] ?? 0) / 100}', style: theme.textTheme.bodySmall)),
+                Expanded(child: Text('Basic: ${formatKwacha(_prices['basic'] ?? 0)}', style: theme.textTheme.bodySmall)),
+                Expanded(child: Text('Pro: ${formatKwacha(_prices['pro'] ?? 0)}', style: theme.textTheme.bodySmall)),
+                Expanded(child: Text('Annual: ${formatKwacha(_prices['annual'] ?? 0)}', style: theme.textTheme.bodySmall)),
               ],
             ),
             const SizedBox(height: 8),

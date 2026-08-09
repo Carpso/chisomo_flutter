@@ -11,11 +11,12 @@ import 'core/router.dart';
 import 'core/theme.dart';
 import 'core/widgets/app_widgets.dart';
 import 'features/campaigns/campaigns_controller.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initPushService();
   await SentryFlutter.init(
     (options) {
@@ -61,30 +62,20 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
     onNotificationOpen = (route) {
       if (mounted) ref.read(pendingDeepLinkProvider.notifier).set(route);
     };
+    setNotificationOpenHandler((route) {
+      if (mounted) ref.read(pendingDeepLinkProvider.notifier).set(route);
+    });
     DeepLinks.init((uri) {
       if (uri.scheme != 'kingdomsponsor' || !mounted) return;
       final refCode = uri.queryParameters['ref'];
       if (refCode != null && refCode.trim().isNotEmpty) {
         ref.read(referralCodeProvider.notifier).set(refCode.trim().toUpperCase());
       }
-      final parts = uri.pathSegments;
-      if (parts.isNotEmpty) {
-        if (parts.first == 'campaign' && parts.length > 1) {
-          final id = int.tryParse(parts[1]);
-          if (id != null) {
-            ref.read(pendingDeepLinkProvider.notifier).set('/campaign/$id');
-          }
-        } else if (parts.first == 'accept-link' && parts.length > 1) {
-          final id = int.tryParse(parts[1]);
-          if (id != null) {
-            ref.read(pendingDeepLinkProvider.notifier).set('/settings/links/$id/accept');
-          }
-        } else if (parts.first == 'reject-link' && parts.length > 1) {
-          final id = int.tryParse(parts[1]);
-          if (id != null) {
-            ref.read(pendingDeepLinkProvider.notifier).set('/settings/links/$id/reject');
-          }
-        }
+      // Convert the custom-scheme URI to a safe in-app path (single source of
+      // truth in the router). pendingDeepLinkProvider only ever holds a path.
+      final route = deepLinkToRoute(uri.toString());
+      if (route != null) {
+        ref.read(pendingDeepLinkProvider.notifier).set(route);
       }
     });
   }
@@ -94,6 +85,8 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
     if (state == AppLifecycleState.resumed) {
       // Auto-refresh campaigns when the app comes back to the foreground.
       ref.invalidate(campaignsProvider);
+      // Re-register push token to handle silent FCM token rotation.
+      refreshPushTokenIfNeeded();
     }
   }
 

@@ -44,6 +44,9 @@ class _BottomNavShellState extends State<BottomNavShell> {
 
   void _handleScrollNotification(ScrollNotification notification) {
     if (notification is! ScrollUpdateNotification) return;
+    // Ignore horizontal scrolls — the home carousel's PageView auto-slides and
+    // would otherwise toggle the nav bar on/off (flicker) as its pages move.
+    if (notification.metrics.axis != Axis.vertical) return;
     final metrics = notification.metrics;
     final atTop = metrics.pixels <= 0;
     final scrollingUp = notification.scrollDelta != null && notification.scrollDelta! < 0;

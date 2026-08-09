@@ -1,5 +1,51 @@
 import '../../core/money.dart';
 
+/// Curated campaign categories (kept in sync with the backend list in
+/// `src/categories.ts` — the API validates against its copy).
+const kCampaignCategories = [
+  'Other',
+  'Church & Ministry',
+  'Missions & Evangelism',
+  'Music & Worship',
+  'Bible School & Discipleship',
+  'Education & School Fees',
+  'Bursary & Scholarships',
+  'Medical & Health',
+  'Disability Support',
+  'Funeral & Memorial',
+  'Children & Orphans',
+  "Women's Empowerment",
+  'Youth & Sports',
+  'Marriage & Family',
+  'Elderly Care',
+  'Community Development',
+  'Food & Hunger Relief',
+  'Water & Sanitation',
+  'Solar & Electricity',
+  'Disaster & Emergency Relief',
+  'Refugee & Migrant Support',
+  'Prison Ministry',
+  'Agriculture & Farming',
+  'Livestock & Seeds',
+  'Business & Startups',
+  'Construction & Buildings',
+  'Transport & Vehicles',
+  'Clothing & Household',
+  'Technology & Devices',
+  'Weddings & Celebrations',
+  'Environmental & Conservation',
+];
+
+/// Campaign market segments (kept in sync with backend `CAMPAIGN_TYPES`).
+const kCampaignTypes = <String, String>{
+  'community': 'Community project',
+  'ngo': 'NGO / organisation',
+  'faith': 'Church & faith',
+  'emergency': 'Emergency / urgent',
+  'medical': 'Medical & treatment',
+  'sponsor': 'Sponsorship / event',
+};
+
 class Campaign {
   final int id;
   final String slug;
@@ -25,6 +71,12 @@ class Campaign {
   final String? promotedUntil;
   final String createdAt;
   final String? shareUrl;
+  final String? hostName;
+  final String category;
+  final String visibility;
+  final bool hostVerified;
+  final String campaignType;
+  final String? hostOrg;
 
   const Campaign({
     required this.id,
@@ -51,6 +103,12 @@ class Campaign {
     this.promotedUntil,
     required this.createdAt,
     this.shareUrl,
+    this.hostName,
+    this.category = 'Other',
+    this.visibility = 'public',
+    this.hostVerified = false,
+    this.campaignType = 'community',
+    this.hostOrg,
   });
 
   factory Campaign.fromJson(Map<String, dynamic> j) => Campaign(
@@ -78,10 +136,18 @@ class Campaign {
     promotedUntil: j['promotedUntil'] as String?,
     createdAt: j['createdAt'] as String? ?? '',
     shareUrl: j['shareUrl'] as String?,
+    hostName: j['hostName'] as String?,
+    category: j['category'] as String? ?? 'Other',
+    visibility: j['visibility'] as String? ?? 'public',
+    hostVerified: j['hostVerified'] == true,
+    campaignType: j['campaignType'] as String? ?? 'community',
+    hostOrg: j['hostOrg'] as String?,
   );
 
   double get progress =>
       goalCents <= 0 ? 0 : (raisedCents / goalCents).clamp(0.0, 1.0);
+
+  bool get isPrivate => visibility == 'private';
 
   String get raisedLabel => formatKwacha(raisedCents);
 
@@ -328,6 +394,9 @@ class FeesInfo {
   final double momoPct;
   final double totalPct;
   final double disbursementPct;
+  final double cardPct;
+  final int cardMinFeeCents;
+  final double cardLipilaPct;
 
   const FeesInfo({
     required this.platformPct,
@@ -336,6 +405,9 @@ class FeesInfo {
     required this.momoPct,
     required this.totalPct,
     required this.disbursementPct,
+    this.cardPct = 2,
+    this.cardMinFeeCents = 500,
+    this.cardLipilaPct = 2.5,
   });
 
   factory FeesInfo.fromJson(Map<String, dynamic> j) => FeesInfo(
@@ -345,6 +417,9 @@ class FeesInfo {
     momoPct: (j['momoPct'] as num? ?? 2.5).toDouble(),
     totalPct: (j['totalPct'] as num? ?? 3.5).toDouble(),
     disbursementPct: (j['disbursementPct'] as num? ?? 1.5).toDouble(),
+    cardPct: (j['cardPct'] as num? ?? 2).toDouble(),
+    cardMinFeeCents: j['cardMinFeeCents'] as int? ?? 500,
+    cardLipilaPct: (j['cardLipilaPct'] as num? ?? 2.5).toDouble(),
   );
 }
 
@@ -512,6 +587,7 @@ class HostApplication {
 
 class AdminStats {
   final int totalRaisedCents;
+  final int totalActiveRaisedCents;
   final int confirmedDonations;
   final int donors;
   final int platformFeesCents;
@@ -533,9 +609,14 @@ class AdminStats {
   final int activePledges;
   final int openTickets;
   final int pendingDeleteRequests;
+  final int qualifiedReferrers;
+  final int totalProcessedCents;
+  final int assistants;
+  final int pendingEditRequests;
 
   const AdminStats({
     required this.totalRaisedCents,
+    required this.totalActiveRaisedCents,
     required this.confirmedDonations,
     required this.donors,
     required this.platformFeesCents,
@@ -557,10 +638,15 @@ class AdminStats {
     required this.activePledges,
     required this.openTickets,
     required this.pendingDeleteRequests,
+    this.qualifiedReferrers = 0,
+    this.totalProcessedCents = 0,
+    this.assistants = 0,
+    this.pendingEditRequests = 0,
   });
 
   factory AdminStats.fromJson(Map<String, dynamic> j) => AdminStats(
     totalRaisedCents: j['totalRaisedCents'] as int? ?? 0,
+    totalActiveRaisedCents: j['totalActiveRaisedCents'] as int? ?? j['totalRaisedCents'] as int? ?? 0,
     confirmedDonations: j['confirmedDonations'] as int? ?? 0,
     donors: j['donors'] as int? ?? 0,
     platformFeesCents: j['platformFeesCents'] as int? ?? 0,
@@ -582,6 +668,10 @@ class AdminStats {
     activePledges: j['activePledges'] as int? ?? 0,
     openTickets: j['openTickets'] as int? ?? 0,
     pendingDeleteRequests: j['pendingDeleteRequests'] as int? ?? 0,
+    qualifiedReferrers: j['qualifiedReferrers'] as int? ?? 0,
+    totalProcessedCents: j['totalProcessedCents'] as int? ?? 0,
+    assistants: j['assistants'] as int? ?? 0,
+    pendingEditRequests: j['pendingEditRequests'] as int? ?? 0,
   );
 }
 

@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/avatar.dart';
+import '../../core/widgets/home_carousel.dart';
 import '../../core/widgets/info_badge.dart';
 import '../../core/widgets/phone_field.dart';
 import '../campaigns/campaigns_controller.dart';
@@ -88,11 +90,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Link an account'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        content: SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               PhoneField(
                 onChanged: (e164) => phoneE164 = e164,
                 labelText: 'Their mobile number',
@@ -108,7 +112,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
                 onChanged: (v) => linkType = v ?? 'family',
               ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
@@ -194,46 +199,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _removeLink(int id) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Remove link?'),
-        content: const Text('This account will no longer be linked.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _pendingAction.add(id));
-    try {
-      await ref.read(apiClientProvider).delete('/api/user/links/$id', auth: true);
-      await _fetchLinks();
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not remove the link. Try again.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _pendingAction.remove(id));
-    }
-  }
-
   Future<void> _editProfile() async {
     final auth = ref.read(authControllerProvider).value;
     final nameController = TextEditingController(text: auth?.name ?? '');
@@ -243,14 +208,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: const Text('Edit profile'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit profile'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                   TextField(
                     controller: nameController,
                     textCapitalization: TextCapitalization.words,
@@ -329,7 +293,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
             ],
-          ),
         ),
       ),
     );
@@ -401,6 +364,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final auth = ref.watch(authControllerProvider).value;
     final phone = auth?.phone;
     final theme = Theme.of(context);
+    final carouselAuto = ref.watch(carouselAutoSlideProvider);
+    ref.listen(linksVersionProvider, (_, __) => _fetchLinks());
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -466,6 +431,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               trailing: Switch(
                 value: _notificationsEnabled,
                 onChanged: _busy ? null : (v) => _setNotifications(v),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: const Icon(LucideIcons.slidersHorizontal, color: AppColors.primary),
+              title: const Text('Auto-slide carousel'),
+              subtitle: const Text('Let the home carousel rotate through campaigns on its own'),
+              trailing: Switch(
+                value: carouselAuto,
+                onChanged: (v) =>
+                    ref.read(carouselAutoSlideProvider.notifier).set(v),
               ),
             ),
           ),
@@ -564,36 +543,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                               ],
                             )
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_pendingAction.contains(link['id']))
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                else
-                                  Icon(
-                                    link['status'] == 'accepted'
-                                        ? LucideIcons.checkCircle
-                                        : LucideIcons.clock,
-                                    color: link['status'] == 'accepted'
-                                        ? AppColors.primary
-                                        : AppColors.gold,
-                                    size: 18,
-                                  ),
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  tooltip: 'Remove link',
-                                  icon: const Icon(LucideIcons.link2Off,
-                                      size: 18, color: AppColors.textMuted),
-                                  onPressed: _pendingAction.contains(link['id'])
-                                      ? null
-                                      : () => _removeLink(link['id']),
+                          : _pendingAction.contains(link['id'])
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Icon(
+                                  link['status'] == 'accepted'
+                                      ? LucideIcons.checkCircle
+                                      : LucideIcons.clock,
+                                  color: link['status'] == 'accepted'
+                                      ? AppColors.primary
+                                      : AppColors.gold,
+                                  size: 18,
                                 ),
-                              ],
-                            ),
                     ),
                 ],
               ),
@@ -625,6 +589,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: const Text('Message the admin about any issue'),
                   trailing: const Icon(LucideIcons.chevronRight, size: 18),
                   onTap: () => context.push('/settings/support'),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(LucideIcons.lifeBuoy, color: AppColors.primary),
+                  title: const Text('How-Tos'),
+                  subtitle: const Text('Tips for giving, hosting and linking accounts'),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => _showHowTos(context),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(LucideIcons.shieldCheck, color: AppColors.primary),
+                  title: const Text('Privacy & terms'),
+                  subtitle: const Text('Data handling, terms of service, legal (Carpso Solutions)'),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => context.push('/settings/legal'),
                 ),
               ],
             ),
@@ -690,11 +670,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           const SizedBox(height: 24),
-          Text(
-            'Kingdom Sponsor v0.4.1',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-          ),
+          _VersionFooter(),
         ],
         ),
       ),
@@ -741,5 +717,130 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  static Future<void> _showHowTos(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('How-Tos'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              _HowToItem(
+                icon: Icons.favorite,
+                title: 'Giving to a campaign',
+                body: 'Choose a campaign from the home list, tap Donate, '
+                    'then enter an amount and confirm with your mobile '
+                    'money PIN. You can give once or set up a monthly '
+                    'pledge. Keep your receipt — it’s auto-saved in '
+                    'Settings > My receipts.',
+              ),
+              SizedBox(height: 16),
+              _HowToItem(
+                icon: Icons.campaign,
+                title: 'Hosting a campaign',
+                body: 'Go to Host > New campaign, add a title, goal and '
+                    'story, then publish. Promote it through your linked '
+                    'accounts and the carousel. Track donors and progress '
+                    'any time from the Host dashboard.',
+              ),
+              SizedBox(height: 16),
+              _HowToItem(
+                icon: Icons.family_restroom,
+                title: 'Linking accounts',
+                body: 'In Settings > Family & friends, tap Link account '
+                    'and enter the phone number of the person you want '
+                    'to connect (family, couple, friend or team). They must '
+                    'accept the SMS invite before the link activates — '
+                    'then you can see combined giving stats.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HowToItem extends StatelessWidget {
+  const _HowToItem({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.primary, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(body, style: theme.textTheme.bodySmall),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// App version footer — reads the real version so it never drifts from the
+/// build (pubspec + Play Console).
+class _VersionFooter extends StatefulWidget {
+  @override
+  State<_VersionFooter> createState() => _VersionFooterState();
+}
+
+class _VersionFooterState extends State<_VersionFooter> {
+  String _label = 'Kingdom Sponsor';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() => _label = 'Kingdom Sponsor v${info.version}');
+      }
+    } catch (_) {
+      if (mounted) setState(() => _label = 'Kingdom Sponsor');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      _label,
+      textAlign: TextAlign.center,
+      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+    );
   }
 }

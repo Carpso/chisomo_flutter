@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
+import 'auth_controller.dart';
 
 class LinkActionScreen extends ConsumerStatefulWidget {
   const LinkActionScreen({super.key});
@@ -24,14 +26,16 @@ class _LinkActionScreenState extends ConsumerState<LinkActionScreen> {
 
   Future<void> _handle() async {
     final loc = GoRouterState.of(context).matchedLocation;
-    final idStr = loc.split('/').last;
+    final segments = loc.split('/').where((s) => s.isNotEmpty).toList();
+    // Route is /settings/links/<id>/accept (or /reject); the id is second-to-last.
+    final idStr = segments.length >= 2 ? segments[segments.length - 2] : '';
     final linkId = int.tryParse(idStr);
     if (linkId == null) {
       setState(() => _message = 'Invalid link.');
       return;
     }
 
-    final isAccept = loc.contains('/accept');
+    final isAccept = loc.endsWith('/accept');
     final api = ref.read(apiClientProvider);
 
     try {
@@ -40,6 +44,7 @@ class _LinkActionScreenState extends ConsumerState<LinkActionScreen> {
       } else {
         await api.rejectLink(linkId);
       }
+      ref.read(linksVersionProvider.notifier).bump();
       setState(() {
         _success = true;
         _message = isAccept
@@ -73,7 +78,7 @@ class _LinkActionScreenState extends ConsumerState<LinkActionScreen> {
                 Icon(
                   _success ? LucideIcons.checkCircle : LucideIcons.xCircle,
                   size: 48,
-                  color: _success ? Colors.green : Colors.red,
+                  color: _success ? AppColors.primary : AppColors.danger,
                 ),
               const SizedBox(height: 16),
               Text(

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_brand_icon.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/app_widgets.dart';
 import '../campaigns/campaigns_controller.dart';
@@ -69,7 +70,7 @@ class TransactionDetailScreen extends ConsumerWidget {
             Card(
               child: Column(
                 children: [
-                  _Row(icon: LucideIcons.tent, label: 'Campaign', value: t.campaignTitle),
+                  _Row(iconWidget: const AppBrandIcon(size: 16), label: 'Campaign', value: t.campaignTitle),
                   _Row(
                     icon: LucideIcons.smartphone,
                     label: 'Donor phone',
@@ -166,12 +167,13 @@ final transactionDetailProvider =
 });
 
 class _Row extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final String label;
   final String value;
   final Color? valueColor;
 
-  const _Row({required this.icon, required this.label, required this.value, this.valueColor});
+  const _Row({this.icon, this.iconWidget, required this.label, required this.value, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +182,8 @@ class _Row extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.textMuted),
+          iconWidget ??
+              Icon(icon ?? LucideIcons.info, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),

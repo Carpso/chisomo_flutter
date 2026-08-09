@@ -24,7 +24,9 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _otpController = TextEditingController();
+  final _referralController = TextEditingController();
   String _phoneE164 = '';
+  Map<String, String> _netStatus = {};
   bool _otpSent = false;
   bool _submitting = false;
   String? _error;
@@ -33,6 +35,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Timer? _cooldownTimer;
   static const _otpCooldown = Duration(seconds: 30);
   bool _hadStoredSession = false;
+
+  static const _networks = {
+    'airtel': ['097', '077', '057'],
+    'mtn': ['096', '076', '056'],
+    'zamtel': ['095', '075', '055'],
+    'zedmobile': ['098', '078', '058'],
+  };
+
+  /// Which Zambian network the entered number belongs to (null if unknown/foreign).
+  String? get _phoneNetwork {
+    final digits = _phoneE164.replaceAll('+260', '').replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty || _phoneE164.isEmpty || !_phoneE164.startsWith('+260')) return null;
+    final local = digits.startsWith('0') ? digits : '0$digits';
+    for (final entry in _networks.entries) {
+      if (entry.value.any(local.startsWith)) return entry.key;
+    }
+    return null;
+  }
+
+  bool get _phoneNetworkDown {
+    final net = _phoneNetwork;
+    return net != null && _netStatus[net] == 'down';
+  }
+
+  bool get _anyNetworkDown => _netStatus.values.any((v) => v == 'down');
 
   bool get _canSendOtp =>
       _lastOtpRequest == null ||
@@ -61,6 +88,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     _checkStoredSession();
+    _loadNetworkStatus();
+    final deepLinkCode = ref.read(referralCodeProvider);
+    if (deepLinkCode != null && deepLinkCode.isNotEmpty) {
+      _referralController.text = deepLinkCode;
+    }
+  }
+
+  Future<void> _loadNetworkStatus() async {
+    try {
+      final res = await ref.read(apiClientProvider).getNetworkStatus();
+      if (!mounted) return;
+      setState(() {
+        _netStatus = (res['networks'] as Map<String, dynamic>? ?? {})
+            .map((k, v) => MapEntry(k, v as String? ?? 'ok'));
+      });
+    } catch (_) {
+      // Offline/failure: banner just won't show; backend still blocks OTP itself.
+    }
   }
 
   Future<void> _checkStoredSession() async {
@@ -72,7 +117,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _cooldownTimer?.cancel();
     _otpController.dispose();
+    _referralController.dispose();
     super.dispose();
+  }
+
+  static String _networkLabel(String id) {
+    switch (id) {
+      case 'airtel':
+        return 'Airtel';
+      case 'mtn':
+        return 'MTN';
+      case 'zamtel':
+        return 'Zamtel';
+      case 'zedmobile':
+        return 'ZedMobile';
+      default:
+        return id;
+    }
   }
 
   Future<void> _sendOtp() async {
@@ -112,11 +173,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _verify() async {
+    if (_otpController.text.trim().length != 6) {
+      setState(() => _error = 'Enter the full 6-digit code.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
     });
-    final referral = ref.read(referralCodeProvider);
+    final manualCode = _referralController.text.trim().toUpperCase();
+    final referral = manualCode.isNotEmpty
+        ? manualCode
+        : ref.read(referralCodeProvider);
     try {
       final isNewUser = await ref
           .read(authControllerProvider.notifier)
@@ -149,9 +217,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go('/');
       }
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted) {
+        setState(() => _error = e.message);
+        // Clear the stale code so re-typing starts fresh (auto-submit at 6
+        // digits otherwise re-fires a known-bad code).
+        _otpController.clear();
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+        _otpController.clear();
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -262,37 +338,74 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ?.copyWith(color: AppColors.textMuted),
                       ),
                       const SizedBox(height: 12),
-                      // SMS network status notice
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(LucideIcons.info, size: 14, color: AppColors.gold),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'SMS verification works on Airtel & Zamtel. MTN OTP is temporarily unavailable.',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppColors.textDark,
-                                  height: 1.3,
+                      if (_phoneNetworkDown)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFEBE9),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFB3261E).withValues(alpha: 0.35)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.alertCircle, size: 14, color: const Color(0xFFB3261E)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${_networkLabel(_phoneNetwork!)} SMS is temporarily unavailable - you may not receive your code. Please try again later.',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFF8A1B15),
+                                    height: 1.3,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      if (!_otpSent)
-                        PhoneField(
-                          onChanged: (e164) => _phoneE164 = e164,
+                            ],
+                          ),
                         )
-                      else
-                        ...[
+                      else if (_anyNetworkDown && !_otpSent)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.gold.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.info, size: 14, color: AppColors.gold),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Some networks are experiencing SMS issues right now. You may not receive your code.',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textDark,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                      if (!_otpSent) ...[
+                        PhoneField(
+                          onChanged: (e164) => setState(() => _phoneE164 = e164),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _referralController,
+                          textCapitalization: TextCapitalization.characters,
+                          textInputAction: TextInputAction.done,
+                          style: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1.5),
+                          decoration: const InputDecoration(
+                            hintText: 'Referral code (optional)',
+                            prefixIcon: Icon(LucideIcons.gift),
+                            helperText:
+                                'Have a referral code? Enter it here so your friend gets credit.',
+                          ),
+                        ),
+                      ]
+                      else ...[
                           TextField(
                             controller: _otpController,
                             autofocus: true,
@@ -370,9 +483,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ],
                       const SizedBox(height: 20),
                        ElevatedButton(
-                         onPressed: _submitting || (!_otpSent && !_canSendOtp)
+                         onPressed: _submitting
                              ? null
-                             : (_otpSent ? _verify : _sendOtp),
+                             : !_otpSent
+                                 ? (!_canSendOtp ? null : _sendOtp)
+                                 : (_otpController.text.trim().length == 6
+                                     ? _verify
+                                     : null),
                          child: _submitting
                              ? SizedBox(
                                  width: 22,

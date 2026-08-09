@@ -8,6 +8,7 @@ import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/avatar.dart';
+import 'auth_controller.dart';
 
 class LinkedAccountDetailScreen extends ConsumerStatefulWidget {
   final int linkId;
@@ -80,6 +81,7 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
     setState(() => _removing = true);
     try {
       await ref.read(apiClientProvider).delete('/api/user/links/${widget.linkId}', auth: true);
+      ref.read(linksVersionProvider.notifier).bump();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Link removed')),
@@ -110,20 +112,20 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
     final isPending = (_link?['status'] as String? ?? '') == 'pending';
     final isInitiator = _link?['isInitiator'] == true;
 
+    int myTotal = 0;
+    int theirTotal = 0;
+    for (final d in _combinedDonations) {
+      final amount = (d['amountCents'] as num?)?.toInt() ?? 0;
+      if (d['isMine'] == true) {
+        myTotal += amount;
+      } else {
+        theirTotal += amount;
+      }
+    }
+    final combinedTotal = myTotal + theirTotal;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Linked account'),
-        actions: [
-          if (!isPending)
-            IconButton(
-              icon: _removing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(LucideIcons.link2Off),
-              tooltip: 'Remove link',
-              onPressed: _removing ? null : _removeLink,
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Linked account')),
       body: _loading
           ? const Center(child: AppIconSpinner())
           : _error != null
@@ -239,7 +241,23 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
                             ),
                           ),
                         )
-                      else
+                      else ...[
+                        // Per-account + combined totals.
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: Row(
+                              children: [
+                                _TotalBlock(label: 'You', amountCents: myTotal),
+                                Container(width: 1, height: 36, color: theme.dividerColor),
+                                _TotalBlock(label: username, amountCents: theirTotal),
+                                Container(width: 1, height: 36, color: theme.dividerColor),
+                                _TotalBlock(label: 'Combined', amountCents: combinedTotal, highlight: true),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Card(
                           child: Column(
                             children: [
@@ -247,8 +265,34 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
                                 ListTile(
                                   dense: true,
                                   leading: const Icon(LucideIcons.coins, color: AppColors.primary, size: 20),
-                                  title: Text('${d['displayName'] ?? 'Giver'} • ${formatKwacha(d['amountCents'] ?? 0)}',
-                                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  title: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          '${d['displayName'] ?? 'Giver'} • ${formatKwacha(d['amountCents'] ?? 0)}',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      if (d['isMine'] == true)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'You',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                   subtitle: Text('${d['campaignTitle'] ?? ''}\n${d['createdAt'] ?? ''}'),
                                   isThreeLine: true,
                                 ),
@@ -257,6 +301,24 @@ class _LinkedAccountDetailScreenState extends ConsumerState<LinkedAccountDetailS
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        if (!isPending)
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.danger,
+                              side: const BorderSide(color: AppColors.danger),
+                            ),
+                            onPressed: _removing ? null : _removeLink,
+                            icon: _removing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(LucideIcons.link2Off, size: 18),
+                            label: const Text('Unlink account'),
+                          ),
+                      ],
                     ],
                   ),
                 ),
@@ -295,5 +357,42 @@ extension on String {
   String capitalize() {
     if (isEmpty) return this;
     return '${this[0].toUpperCase()}${substring(1)}';
+  }
+}
+
+class _TotalBlock extends StatelessWidget {
+  final String label;
+  final int amountCents;
+  final bool highlight;
+
+  const _TotalBlock({
+    required this.label,
+    required this.amountCents,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            formatKwacha(amountCents),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: highlight ? AppColors.primary : AppColors.textDark,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

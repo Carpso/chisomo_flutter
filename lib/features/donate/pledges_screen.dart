@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_brand_icon.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/app_widgets.dart';
 import '../campaigns/campaigns_controller.dart';
@@ -180,7 +181,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () => context.go('/'),
-            icon: const Icon(LucideIcons.tent, size: 18),
+            icon: const AppBrandIcon(size: 18),
             label: const Text('Browse fundraisers'),
           ),
         ],
@@ -280,7 +281,7 @@ class _PledgeCard extends ConsumerWidget {
                           visualDensity: VisualDensity.compact,
                         ),
                         onPressed: () => context.push('/campaign/${pledge.campaignId}'),
-                        icon: const Icon(LucideIcons.tent, size: 16),
+                        icon: const AppBrandIcon(size: 16),
                         label: const Text('Open fundraiser'),
                       ),
                     ),
@@ -291,6 +292,30 @@ class _PledgeCard extends ConsumerWidget {
                         visualDensity: VisualDensity.compact,
                       ),
                       onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Stop this reminder?'),
+                            content: const Text(
+                              'You will no longer be reminded to give to this campaign '
+                              'each month. Your past donations are unaffected.',
+                              style: TextStyle(height: 1.5),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Keep it'),
+                              ),
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.danger),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Stop reminder'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
                         try {
                           final res = await ref
                               .read(pledgesProvider.notifier)

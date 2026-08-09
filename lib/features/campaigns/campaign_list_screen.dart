@@ -6,26 +6,52 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../core/offline_cache.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/home_carousel.dart';
 import '../auth/auth_controller.dart';
 import 'campaigns_controller.dart';
 import 'campaign_image.dart';
 import 'models.dart';
 
-class CampaignListScreen extends ConsumerWidget {
+class CampaignListScreen extends ConsumerStatefulWidget {
   const CampaignListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CampaignListScreen> createState() => _CampaignListScreenState();
+}
+
+class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
+  String _category = 'All';
+  bool _searching = false;
+  final _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final campaigns = ref.watch(campaignsProvider);
     final offline = ref.watch(offlineModeProvider);
     final auth = ref.watch(authControllerProvider).value;
     final isAdmin = auth?.isAdmin ?? false;
     final isApprovedHost = auth?.hostStatus == 'approved';
-    final trendId = campaigns.value != null && (campaigns.value?.isNotEmpty ?? false)
-        ? campaigns.value!
-            .reduce((a, b) => (a.dailyRateCents >= b.dailyRateCents) ? a : b)
-            .id
+
+    // Smart local filter over the already-loaded campaigns.
+    final loaded = campaigns.value ?? const <Campaign>[];
+    final q = _searchController.text.trim().toLowerCase();
+    final List<Campaign> searched = q.isEmpty
+        ? loaded
+        : loaded.where((c) {
+            final hay = [
+              c.title, c.description, c.category, c.hostName ?? '', c.hostOrg ?? '',
+            ].join(' ').toLowerCase();
+            return hay.contains(q);
+          }).toList();
+    final trendId = searched.isNotEmpty
+        ? searched.reduce((a, b) => (a.dailyRateCents >= b.dailyRateCents) ? a : b).id
         : -1;
 
     return Scaffold(
@@ -41,6 +67,14 @@ class CampaignListScreen extends ConsumerWidget {
               tooltip: 'Admin dashboard',
               onPressed: () => context.push('/admin'),
             ),
+          IconButton(
+            icon: Icon(_searching ? LucideIcons.x : LucideIcons.search),
+            tooltip: _searching ? 'Close search' : 'Search campaigns',
+            onPressed: () => setState(() {
+              _searching = !_searching;
+              if (!_searching) _searchController.clear();
+            }),
+          ),
         ],
       ),
       floatingActionButton: isApprovedHost
@@ -53,11 +87,47 @@ class CampaignListScreen extends ConsumerWidget {
 body: campaigns.when(
               loading: () => const _ListSkeleton(),
               error: (e, _) =>
-                  _ErrorRetry(message: '$e', onRetry: () => ref.invalidate(campaignsProvider)),
-              data: (items) => RefreshIndicator(
+                  _ErrorRetry(message: friendlyError(e), onRetry: () => ref.invalidate(campaignsProvider)),
+              data: (items) {
+                final qq = _searchController.text.trim().toLowerCase();
+                final List<Campaign> searched = qq.isEmpty
+                    ? items
+                    : items.where((c) {
+                        final hay = [
+                          c.title, c.description, c.category, c.hostName ?? '', c.hostOrg ?? '',
+                        ].join(' ').toLowerCase();
+                        return hay.contains(qq);
+                      }).toList();
+                final filtered = _category == 'All'
+                    ? searched
+                    : searched.where((c) => c.category == _category).toList();
+                return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(campaignsProvider),
                 child: CustomScrollView(
                   slivers: [
+                    if (_searching) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          child: TextField(
+                            controller: _searchController,
+                            autofocus: true,
+                            decoration: InputDecoration(
+                              hintText: 'Search campaigns, hosts, churches…',
+                              prefixIcon: const Icon(LucideIcons.search, size: 20),
+                              suffixIcon: _searchController.text.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      tooltip: 'Clear',
+                                      icon: const Icon(LucideIcons.x, size: 18),
+                                      onPressed: () => setState(() => _searchController.clear()),
+                                    ),
+                            ),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (offline)
                       SliverToBoxAdapter(
                         child: Container(
@@ -82,28 +152,100 @@ body: campaigns.when(
                       ),
                      const SliverToBoxAdapter(child: HomeCarousel()),
                      const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                     if (items.isEmpty)
-                       const SliverToBoxAdapter(
+                     SliverToBoxAdapter(
+                       child: SizedBox(
+                         height: 40,
+                         child: ListView(
+                           scrollDirection: Axis.horizontal,
+                           padding: const EdgeInsets.symmetric(horizontal: 12),
+                           children: [
+                             _CategoryChip(
+                               label: 'All',
+                               selected: _category == 'All',
+                               onTap: () => setState(() => _category = 'All'),
+                             ),
+                             for (final c in kCampaignCategories)
+                               _CategoryChip(
+                                 label: c,
+                                 selected: _category == c,
+                                 onTap: () => setState(() => _category = c),
+                               ),
+                           ],
+                         ),
+                       ),
+                     ),
+                     const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                     if (filtered.isEmpty)
+                       SliverToBoxAdapter(
                          child: Padding(
-                           padding: EdgeInsets.all(40),
+                           padding: const EdgeInsets.all(40),
                            child: Column(
                              children: [
-                               Icon(LucideIcons.tent, size: 48, color: AppColors.textMuted),
-                               SizedBox(height: 16),
-                               Text('No campaigns yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
-                               SizedBox(height: 8),
-                               Text('Check back later for new fundraisers!', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted)),
-                             ],
-                           ),
-                         ),
-                       )
-                     else
-                       SliverList(
+                               Container(
+                                 padding: const EdgeInsets.all(20),
+                                 decoration: BoxDecoration(
+                                   color: AppColors.primary.withValues(alpha: 0.08),
+                                   shape: BoxShape.circle,
+                                 ),
+                                  child: Icon(
+                                    _searchController.text.trim().isNotEmpty
+                                        ? LucideIcons.search
+                                        : _category == 'All'
+                                            ? LucideIcons.megaphone
+                                            : LucideIcons.filter,
+                                    size: 34,
+                                    color: AppColors.primary,
+                                  ),
+                               ),
+                               const SizedBox(height: 16),
+                                Text(
+                                  _searchController.text.trim().isNotEmpty
+                                      ? 'No campaigns match "${_searchController.text.trim()}"'
+                                      : _category == 'All'
+                                          ? 'No campaigns yet'
+                                          : 'No campaigns in "$_category"',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textDark)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _searchController.text.trim().isNotEmpty
+                                      ? 'Try a different word, or clear the search.'
+                                      : _category == 'All'
+                                          ? 'Be the first to share a fundraiser. Hosts can start one in the Host tab.'
+                                          : 'Try another category or share the first campaign here.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(color: AppColors.textMuted, height: 1.4),
+                                ),
+                                if (_category != 'All' ||
+                                    _searchController.text.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 16),
+                                  OutlinedButton.icon(
+                                    onPressed: () => setState(() {
+                                      _category = 'All';
+                                      _searchController.clear();
+                                    }),
+                                    icon: const Icon(LucideIcons.undo2, size: 16),
+                                    label: const Text('Clear search & filters'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        SliverList(
                          delegate: SliverChildBuilderDelegate(
                            (context, i) => _CampaignCard(
-                               campaign: items[i],
-                               isTrending: items[i].id == trendId),
-                           childCount: items.length,
+                               campaign: filtered[i],
+                               isTrending: filtered[i].id == trendId,
+                               onOrgTap: () => setState(() {
+                                 _searching = true;
+                                 _searchController.text = filtered[i].hostOrg ?? '';
+                               })),
+                           childCount: filtered.length,
                          ),
                        ),
                      // Bottom spacing so last card isn't flush with screen edge or hidden by FAB
@@ -112,8 +254,45 @@ body: campaigns.when(
                      ),
                   ],
                 ),
-              ),
+              );
+              },
             ),
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+        selectedColor: AppColors.primary,
+        labelStyle: TextStyle(
+          color: selected ? Colors.white : AppColors.textMuted,
+          fontSize: 12.5,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        ),
+        backgroundColor: const Color(0xFF151521),
+        side: BorderSide(
+          color: selected ? AppColors.primary : const Color(0xFF2A2A3A),
+        ),
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }
@@ -121,8 +300,9 @@ body: campaigns.when(
 class _CampaignCard extends StatelessWidget {
   final Campaign campaign;
   final bool isTrending;
+  final VoidCallback? onOrgTap;
 
-  const _CampaignCard({required this.campaign, this.isTrending = false});
+  const _CampaignCard({required this.campaign, this.isTrending = false, this.onOrgTap});
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +376,48 @@ Text(
                       style: theme.textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
+                    if (campaign.hostName != null && campaign.hostName!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Hosted by ${campaign.hostName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.textMuted, fontSize: 11),
+                            ),
+                          ),
+                          if (campaign.hostVerified) ...[
+                            const SizedBox(width: 4),
+                            const Icon(LucideIcons.badgeCheck,
+                                size: 12, color: AppColors.primary),
+                          ],
+                        ],
+                      ),
+                    ],
+                    if (campaign.hostOrg != null && campaign.hostOrg!.isNotEmpty) ...[
+                      const SizedBox(height: 1),
+                      InkWell(
+                        onTap: onOrgTap,
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.building2, size: 11, color: AppColors.primary),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                '${campaign.hostOrg}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                    color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Row(
                       children: [
@@ -219,6 +441,30 @@ Text(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w700,
                                           color: AppColors.gold)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (campaign.isPrivate)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.textMuted.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(LucideIcons.lock, size: 10, color: AppColors.textMuted),
+                                  SizedBox(width: 2),
+                                  Text('Private',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textMuted)),
                                 ],
                               ),
                             ),
@@ -302,10 +548,37 @@ class _ListSkeleton extends StatelessWidget {
         itemCount: 4,
         separatorBuilder: (_, __) => const SizedBox(height: 14),
         itemBuilder: (_, __) => Container(
-          height: 160,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 88,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(height: 14, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 8),
+                    Container(height: 14, width: 160, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 8),
+                    Container(height: 12, width: 120, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 10),
+                    Container(height: 10, width: 90, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

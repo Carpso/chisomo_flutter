@@ -93,6 +93,8 @@ class HostController extends AsyncNotifier<HostData> {
     required int goalCents,
     required int minWithdrawCents,
     DateTime? endsAt,
+    String category = 'Other',
+    String campaignType = 'community',
   }) async {
     final res = await ref.read(apiClientProvider).post(
           '/api/campaigns',
@@ -101,6 +103,8 @@ class HostController extends AsyncNotifier<HostData> {
             'description': description,
             'goalCents': goalCents,
             'minWithdrawCents': minWithdrawCents,
+            'category': category,
+            'campaignType': campaignType,
             if (endsAt != null) 'endsAt': endsAt.toIso8601String().split('T')[0],
           },
           auth: true,
@@ -140,10 +144,20 @@ class HostController extends AsyncNotifier<HostData> {
     required String org,
     required String role,
     required String reason,
+    String? kycType,
+    String? kycDocUrl,
+    String? kycNotes,
   }) async {
     final res = await ref.read(apiClientProvider).post(
           '/api/host/apply',
-          {'org': org, 'role': role, 'reason': reason},
+          {
+            'org': org,
+            'role': role,
+            'reason': reason,
+            if (kycType != null) 'kycType': kycType,
+            if (kycDocUrl != null) 'kycDocUrl': kycDocUrl,
+            if (kycNotes != null) 'kycNotes': kycNotes,
+          },
           auth: true,
         );
     await refresh();

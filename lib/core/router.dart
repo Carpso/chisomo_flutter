@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,6 +9,7 @@ import '../features/auth/referrals_screen.dart';
 import '../features/auth/settings_screen.dart';
 import '../features/auth/link_action_screen.dart';
 import '../features/auth/linked_account_detail_screen.dart';
+import '../features/auth/legal_screen.dart';
 import '../features/campaigns/campaign_detail_screen.dart';
 import '../features/campaigns/campaign_list_screen.dart';
 import '../features/donate/donate_screen.dart';
@@ -22,6 +24,9 @@ import '../features/host/promote_screen.dart';
 import '../features/admin/admin_campaigns_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/admin/admin_ledger_screen.dart';
+import '../features/admin/admin_lipila_logs_screen.dart';
+import '../features/admin/admin_edit_requests_screen.dart';
+import '../features/admin/admin_staff_screen.dart';
 import '../features/admin/transaction_detail_screen.dart';
 
 /// A `kingdomsponsor://campaign/<id>` deep link waiting to be opened after
@@ -46,6 +51,46 @@ class ReferralCode extends Notifier<String?> {
 
 final referralCodeProvider = NotifierProvider<ReferralCode, String?>(ReferralCode.new);
 
+/// Converts any deep-link value (a raw `kingdomsponsor://campaign/<id>?ref=...`
+/// URI or a path like `/campaign/<id>`) into a safe in-app route. Returns null
+/// when nothing matches, so the router never throws a "no routes" GoException.
+String? deepLinkToRoute(String? value) {
+  if (value == null || value.isEmpty) return null;
+  // Raw custom-scheme URI: kingdomsponsor://campaign/7?ref=CODE
+  if (value.contains('://')) {
+    final uri = Uri.tryParse(value);
+    if (uri == null) return null;
+    if (uri.scheme != 'kingdomsponsor') return null;
+    final keyword = uri.host;
+    final idStr = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+    final id = int.tryParse(idStr);
+    switch (keyword) {
+      case 'campaign':
+        return id == null ? null : '/campaign/$id';
+      case 'donate':
+        return id == null ? null : '/donate/$id';
+      case 'support':
+        return '/settings/support';
+      case 'accept-link':
+        return id == null ? null : '/settings/links/$id/accept';
+      case 'reject-link':
+        return id == null ? null : '/settings/links/$id/reject';
+      default:
+        return null;
+    }
+  }
+  // Already a path — only accept known top-level segments.
+  final path = value;
+  if (!path.startsWith('/')) return null;
+  final segs = path.split('/').where((s) => s.isNotEmpty).toList();
+  if (segs.isEmpty) return null;
+  const known = {
+    'campaign', 'donate', 'pledges', 'settings', 'host', 'airtime', 'admin',
+  };
+  if (!known.contains(segs.first)) return null;
+  return path;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     initialLocation: '/',
@@ -61,7 +106,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login';
       }
       if (loggedIn && onLogin) return '/';
-      final pending = ref.read(pendingDeepLinkProvider);
+      final pending = deepLinkToRoute(ref.read(pendingDeepLinkProvider));
       if (loggedIn && pending != null) {
         ref.read(pendingDeepLinkProvider.notifier).set(null);
         return pending;
@@ -112,6 +157,9 @@ final routerProvider = Provider<GoRouter>((ref) {
              builder: (context, state) => const SupportScreen(),
            ),
            GoRoute(
+             path: '/settings/legal',
+             builder: (context, state) => const LegalScreen(),
+           ),           GoRoute(
              path: '/settings/links/:id/accept',
              builder: (context, state) => const LinkActionScreen(),
            ),
@@ -136,8 +184,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/host/edit/:id',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
-              if (!isAdmin) return const CampaignListScreen();
+              final auth = ref.read(authControllerProvider).value;
+              // Hosts edit their own campaigns; admins can edit any.
+              final canEdit = auth?.isAdmin == true || auth?.hostStatus == 'approved';
+              if (!canEdit) return const CampaignListScreen();
               final campaignId = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
               return CreateCampaignScreen(campaignId: campaignId);
             },
@@ -157,15 +207,39 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return const AdminScreen();
             },
           ),
           GoRoute(
+            path: '/admin/staff',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              return const AdminStaffScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/edit-requests',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              return const AdminEditRequestsScreen();
+            },
+          ),
+          GoRoute(
             path: '/admin/transactions',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return const AdminTransactionsScreen();
             },
@@ -173,7 +247,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/transactions/:id',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return TransactionDetailScreen(
                 transactionId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
@@ -183,7 +259,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/disbursements',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return const AdminDisbursementsScreen();
             },
@@ -191,9 +269,21 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin/campaigns',
             builder: (context, state) {
-              final isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
               if (!isAdmin) return const CampaignListScreen();
               return const AdminCampaignsScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/lipila-logs',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final isAdmin = authAsync.value?.isAdmin ?? false;
+              if (!isAdmin) return const CampaignListScreen();
+              return const LipilaLogsScreen();
             },
           ),
         ],
@@ -207,7 +297,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(pendingDeepLinkProvider, (prev, next) {
     if (next == null) return;
     final loggedIn = ref.read(authControllerProvider).value?.loggedIn ?? false;
-    if (loggedIn) router.go(next);
+    if (!loggedIn) return;
+    final route = deepLinkToRoute(next);
+    if (route != null) router.go(route);
   });
 
   return router;

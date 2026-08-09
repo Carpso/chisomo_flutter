@@ -29,11 +29,24 @@ class ApiClient {
 
   String get _baseUrl => dotenv.env['API_URL'] ?? 'http://10.0.2.2:8787';
 
-  /// Public, QR/WhatsApp-friendly share page for a campaign.
+  /// Authenticated download URL for an admin export file (CSV/PDF/backup).
+  String adminExportUrl(String path) => '$_baseUrl$path';
+
+  /// Long, public, QR/WhatsApp-friendly share page for a campaign.
   String shareUrl(int campaignId) => '$_baseUrl/share/$campaignId';
+
+  /// Short, public-friendly share page (uses the self-hosted shortener).
+  /// Prefer [Campaign.shareUrl] when available — it comes back from the API as
+  /// an already-shortened link. This is a client-side fallback: it points at
+  /// the long share page (which the backend shortens on first visit), so it
+  /// always resolves even offline of the shortener.
+  String shortUrl(int campaignId) => shareUrl(campaignId);
 
   /// Deep link that opens this campaign directly in the installed app.
   String deepLink(int campaignId) => 'kingdomsponsor://campaign/$campaignId';
+
+  /// Deep link that opens the donate flow for this campaign in the app.
+  String donateDeepLink(int campaignId) => 'kingdomsponsor://donate/$campaignId';
 
   /// Play Store page for people who do not have the app installed.
   static const playStoreUrl =
@@ -200,6 +213,29 @@ class ApiClient {
     return res['promotions'] as List<dynamic>? ?? [];
   }
 
+  /// Admin: all host applications (approved/pending/rejected).
+  Future<List<dynamic>> getAdminApplications() async {
+    final res = await get('/api/admin/applications', auth: true);
+    return res['applications'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: approve a pending host application.
+  Future<Map<String, dynamic>> approveApplication(int userId) {
+    return post('/api/admin/applications/$userId/approve', {}, auth: true);
+  }
+
+  /// Admin: reject a pending host application.
+  Future<Map<String, dynamic>> rejectApplication(int userId, {String? reason}) {
+    return post('/api/admin/applications/$userId/reject',
+        reason != null ? {'reason': reason} : {}, auth: true);
+  }
+
+  /// Admin: promote a campaign directly (free; goes live immediately).
+  Future<Map<String, dynamic>> adminPromoteCampaign(int campaignId, {int? days}) {
+    return post('/api/admin/campaigns/$campaignId/promote',
+        days != null ? {'days': days} : {}, auth: true);
+  }
+
   /// Browser-openable PDF receipt URL for a contribution (needs auth token).
   String receiptUrl(int contributionId) =>
       '$_baseUrl/api/contributions/$contributionId/receipt?token=$token';
@@ -221,6 +257,31 @@ class ApiClient {
             'POST',
             Uri.parse('$_baseUrl/api/campaigns/$campaignId/logo'),
           )
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(
+            http.MultipartFile.fromBytes(
+              'file',
+              bytes,
+              filename: filename,
+              contentType: mime,
+            ),
+          );
+    final res = await _send(
+      () => req.send().then((s) => http.Response.fromStream(s)),
+    );
+    return _decode(res);
+  }
+
+  /// Host: upload a KYC document (NRC / NGO cert / endorsement) to R2.
+  Future<Map<String, dynamic>> uploadKycDoc(List<int> bytes, String filename) async {
+    final ext = filename.split('.').last.toLowerCase();
+    final mime = switch (ext) {
+      'png' => MediaType('image', 'png'),
+      'webp' => MediaType('image', 'webp'),
+      _ => MediaType('image', 'jpeg'),
+    };
+    final req =
+        http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/host/kyc-upload'))
           ..headers['Authorization'] = 'Bearer $token'
           ..files.add(
             http.MultipartFile.fromBytes(
@@ -328,8 +389,17 @@ class ApiClient {
     }, auth: true);
   }
 
-  /// Admin: update a campaign's title, description, goal, status, etc.
+  /// Update a campaign's title, description, goal, category, visibility, etc.
+  /// Hosts edit their own campaigns via this endpoint.
   Future<Map<String, dynamic>> updateCampaign(
+    int campaignId,
+    Map<String, dynamic> body,
+  ) {
+    return put('/api/campaigns/$campaignId', body, auth: true);
+  }
+
+  /// Admin: update any campaign (title, description, goal, status, …).
+  Future<Map<String, dynamic>> adminUpdateCampaign(
     int campaignId,
     Map<String, dynamic> body,
   ) {
@@ -465,10 +535,37 @@ class ApiClient {
     return put('/api/admin/tickets/$id/resolve', {}, auth: true);
   }
 
-  /// Admin: all support tickets (optionally filtered by status).
-  Future<List<dynamic>> getAdminTickets({String status = ''}) async {
+  /// Admin: all support tickets (optionally filtered by status) plus the
+  /// configured support assistant name used as the reply signature.
+  Future<(List<dynamic> tickets, String assistantName)> getAdminTickets({String status = ''}) async {
     final res = await get('/api/admin/tickets?status=$status', auth: true);
-    return res['tickets'] as List<dynamic>? ?? [];
+    return (
+      res['tickets'] as List<dynamic>? ?? [],
+      res['assistantName'] as String? ?? 'Kingdom Sponsor Care Team',
+    );
+  }
+
+  /// Admin: change the support assistant name (reply SMS signature).
+  Future<Map<String, dynamic>> setSupportAssistantName(String name) {
+    return put('/api/admin/support-config', {'assistantName': name}, auth: true);
+  }
+
+  /// Public: per-network SMS health (mtn/airtel/zamtel/zedmobile = ok|down).
+  Future<Map<String, dynamic>> getNetworkStatus() async {
+    return get('/api/networks/status');
+  }
+
+  /// Admin: set per-network SMS health.
+  Future<Map<String, dynamic>> setNetworkStatus(Map<String, String> statuses) {
+    return put('/api/admin/network-status', {'statuses': statuses}, auth: true);
+  }
+
+  Future<Map<String, dynamic>> getLipilaLogs({String? kind, String? status, int limit = 200}) {
+    final q = <String>[];
+    if (kind != null) q.add('kind=$kind');
+    if (status != null) q.add('status=$status');
+    q.add('limit=$limit');
+    return get('/api/admin/lipila-logs?${q.join("&")}', auth: true);
   }
 
   /// Admin: get push notification status (token counts, config).
@@ -484,6 +581,17 @@ class ApiClient {
   /// Admin: trigger auto-disburse for all campaigns or a specific campaign.
   Future<Map<String, dynamic>> triggerDisburse({int? campaignId}) {
     return post('/api/admin/disburse', campaignId != null ? {'campaignId': campaignId} : {}, auth: true);
+  }
+
+  /// Admin: get campaigns eligible for disbursement (balance >= min_withdraw).
+  Future<List<dynamic>> getEligiblePayouts() async {
+    final res = await get('/api/admin/eligible-payouts', auth: true);
+    return res['campaigns'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: disburse a specific campaign by ID.
+  Future<Map<String, dynamic>> disburseCampaign(int campaignId) {
+    return post('/api/admin/disburse', {'campaignId': campaignId}, auth: true);
   }
 
   /// Admin: get Lipila wallet balance.
@@ -518,9 +626,67 @@ class ApiClient {
     return get('/api/me/referrals', auth: true);
   }
 
+  /// Admin: referrers who reached the reward threshold.
+  Future<Map<String, dynamic>> getAdminReferrals() {
+    return get('/api/admin/referrals', auth: true);
+  }
+
+  /// Admin: reward a qualified referrer.
+  Future<Map<String, dynamic>> rewardReferral(int userId) {
+    return post('/api/admin/referrals/$userId/reward', {}, auth: true);
+  }
+
   /// Admin: refund a promotion fee back to the host's mobile money.
   Future<Map<String, dynamic>> refundPromotion(int id) {
     return post('/api/admin/promotions/$id/refund', {}, auth: true);
+  }
+
+  /// Admin: list current assistants and their permission scopes.
+  Future<Map<String, dynamic>> getAdminAssistants() {
+    return get('/api/admin/assistants', auth: true);
+  }
+
+  /// Admin: search users by phone/username to add as an assistant.
+  Future<Map<String, dynamic>> searchUsers(String q) {
+    return get('/api/admin/users/search?q=${Uri.encodeQueryComponent(q)}', auth: true);
+  }
+
+  /// Admin: add or update an assistant's permission scopes.
+  Future<Map<String, dynamic>> saveAssistant(
+    int userId, {
+    required List<String> permissions,
+    String? phone,
+  }) {
+    return post('/api/admin/assistants', {
+      'userId': userId,
+      'permissions': permissions,
+      if (phone != null) 'phone': phone,
+    }, auth: true);
+  }
+
+  /// Admin: update an existing assistant's scopes.
+  Future<Map<String, dynamic>> updateAssistant(int userId, List<String> permissions) {
+    return put('/api/admin/assistants/$userId', {'permissions': permissions}, auth: true);
+  }
+
+  /// Admin: remove an assistant (revokes all limited access).
+  Future<Map<String, dynamic>> removeAssistant(int userId) {
+    return delete('/api/admin/assistants/$userId', auth: true);
+  }
+
+  /// Admin: list soft-deleted campaigns that can be restored.
+  Future<Map<String, dynamic>> getDeletedCampaigns() {
+    return get('/api/admin/campaigns/deleted', auth: true);
+  }
+
+  /// Admin: restore a soft-deleted campaign.
+  Future<Map<String, dynamic>> restoreCampaign(int campaignId) {
+    return post('/api/admin/campaigns/$campaignId/restore', {}, auth: true);
+  }
+
+  /// Admin: recent sensitive admin actions (audit log).
+  Future<Map<String, dynamic>> getAdminActions() {
+    return get('/api/admin/actions', auth: true);
   }
 
   /// Admin: host payouts + sweeps ledger.
@@ -533,6 +699,66 @@ class ApiClient {
       auth: true,
     );
     return res['payouts'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: approve a host payout request.
+  Future<Map<String, dynamic>> approvePayoutRequest(int payoutId) {
+    return post('/api/admin/payout-requests/$payoutId/approve', {}, auth: true);
+  }
+
+  /// Admin: approve or reject a host's KYC submission.
+  Future<Map<String, dynamic>> decideKyc(
+    int userId, {
+    required bool approve,
+    String notes = '',
+  }) {
+    return post('/api/admin/hosts/$userId/kyc', {
+      'approve': approve,
+      'notes': notes,
+    }, auth: true);
+  }
+
+  /// Admin: mark an approved host as independently verified (with private notes).
+  Future<Map<String, dynamic>> verifyHost(
+    int userId, {
+    required bool verified,
+    String notes = '',
+  }) {
+    return post('/api/admin/hosts/$userId/verify', {
+      'verified': verified,
+      'notes': notes,
+    }, auth: true);
+  }
+
+  /// Admin: list host campaign-edit requests pending/approved/rejected.
+  Future<Map<String, dynamic>> getEditRequests() {
+    return get('/api/admin/edit-requests', auth: true);
+  }
+
+  /// Admin: approve a host's campaign-edit request (applies the changes).
+  Future<Map<String, dynamic>> approveEditRequest(int id) {
+    return post('/api/admin/edit-requests/$id/approve', {}, auth: true);
+  }
+
+  /// Admin: reject a host's campaign-edit request.
+  Future<Map<String, dynamic>> rejectEditRequest(int id, {String notes = ''}) {
+    return post('/api/admin/edit-requests/$id/reject', {'notes': notes}, auth: true);
+  }
+
+  /// Admin: reject a host payout request.
+  Future<Map<String, dynamic>> rejectPayoutRequest(int payoutId, {String? reason}) {
+    return post('/api/admin/payout-requests/$payoutId/reject',
+        reason != null ? {'reason': reason} : {}, auth: true);
+  }
+
+  /// Admin: block a campaign from receiving payouts.
+  Future<Map<String, dynamic>> blockPayout(int campaignId) {
+    return post('/api/admin/campaigns/$campaignId/block-payout', {}, auth: true);
+  }
+
+  /// Admin: unblock a campaign's payouts.
+  Future<Map<String, dynamic>> unblockPayout(int campaignId) {
+    return post('/api/admin/campaigns/$campaignId/unblock-payout', {}, auth: true);
   }
 
   /// Admin: paginated contribution ledger.

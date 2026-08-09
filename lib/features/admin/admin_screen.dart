@@ -1,16 +1,26 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/app_brand_icon.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../campaigns/campaign_image.dart';
 import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/avatar.dart';
 import '../../core/api_client.dart';
 import '../../core/date_utils.dart';
+import '../airtime/airtime_screen.dart';
+import '../host/host_badge_screen.dart';
 import '../campaigns/campaigns_controller.dart';
+import 'admin_tile_detail_screen.dart';
 import '../campaigns/models.dart';
 
 class AdminScreen extends ConsumerStatefulWidget {
@@ -45,6 +55,46 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     final k = GlobalKey();
     _sectionKeys[id] = k;
     return k;
+  }
+
+  /// Downloads an admin export (CSV/PDF/JSON) with the session token and
+  /// offers to open it once saved.
+  Future<void> _downloadExport(BuildContext context, String path, String fileName) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final api = ref.read(apiClientProvider);
+    final token = api.token;
+    if (token == null) {
+      messenger.showSnackBar(const SnackBar(content: Text('You are not signed in.')));
+      return;
+    }
+    final snack = messenger.showSnackBar(const SnackBar(content: Text('Downloading…')));
+    try {
+      final res = await http.get(
+        Uri.parse(api.adminExportUrl(path)),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (res.statusCode != 200) {
+        throw Exception('Download failed (${res.statusCode})');
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(res.bodyBytes);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Saved $fileName'),
+          action: SnackBarAction(
+            label: 'View',
+            onPressed: () => OpenFile.open(file.path),
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    } finally {
+      snack.close();
+    }
   }
 
   static const _sectionLabels = <(String, String, IconData)>[
@@ -91,15 +141,17 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         ),
         data: (data) => RefreshIndicator(
           onRefresh: () async => ref.invalidate(adminDataProvider),
-          child: CustomScrollView(
+          child: SingleChildScrollView(
             controller: _scrollController,
-            slivers: [
-              SliverToBoxAdapter(
-                child: SizedBox(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
                   height: 44,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
                       for (final (id, label, icon) in _sectionLabels)
                         Padding(
@@ -113,11 +165,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     ],
                   ),
                 ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.all(16),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
+                const SizedBox(height: 12),
                     KeyedSubtree(
                       key: _newKey('stats'),
                       child: _StatGrid(stats: data.stats),
@@ -154,8 +202,55 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       onPressed: () => context.push('/admin/campaigns'),
-                      icon: const Icon(LucideIcons.tent, size: 18),
+                      icon: const AppBrandIcon(size: 18),
                       label: const Text('Campaigns'),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => context.push('/admin/lipila-logs'),
+                      icon: const Icon(LucideIcons.list, size: 18),
+                      label: const Text('Lipila logs'),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: () =>
+                                _downloadExport(context, '/api/admin/stats/export.csv', 'kingdom_sponsor_stats.csv'),
+                            icon: const Icon(LucideIcons.fileSpreadsheet, size: 18),
+                            label: const Text('Stats CSV'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: () =>
+                                _downloadExport(context, '/api/admin/stats/export.pdf', 'kingdom_sponsor_report.pdf'),
+                            icon: const Icon(LucideIcons.fileText, size: 18),
+                            label: const Text('PDF report'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () =>
+                          _downloadExport(context, '/api/admin/backup/export', 'kingdom_sponsor_backup.json'),
+                      icon: const Icon(LucideIcons.databaseBackup, size: 18),
+                      label: const Text('Download full backup (JSON)'),
                     ),
                     const SizedBox(height: 20),
                     KeyedSubtree(
@@ -184,6 +279,14 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                                   for (final c in data.topCampaigns)
                                     ListTile(
                                       dense: true,
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: SizedBox(
+                                          width: 32,
+                                          height: 32,
+                                          child: CampaignImage(campaign: c, fit: BoxFit.cover),
+                                        ),
+                                      ),
                                       title: Text(c.title,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -282,6 +385,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     const SizedBox(height: 12),
                     const _PromoConfigSection(),
                     const SizedBox(height: 12),
+                    const AirtimeAdminConfig(),
+                    const SizedBox(height: 12),
+                    const BadgeAdminConfig(),
+                    const SizedBox(height: 12),
                     KeyedSubtree(
                       key: _newKey('tickets'),
                       child: const _TicketsSection(),
@@ -296,15 +403,13 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                     const SizedBox(height: 12),
                     const _FailedLoginsSection(),
                     const SizedBox(height: 12),
+                    const _TelegramConfigSection(),
+                    const SizedBox(height: 12),
                     const _BanSection(),
                     const SizedBox(height: 12),
                     const _PushStatusSection(),
-                    const SizedBox(height: 12),
-                    const _UrlExplanationSection(),
-                  ]),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -354,14 +459,13 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: const Text('Promotion paywall'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Promotion paywall'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                   TextField(
                     controller: priceController,
                     keyboardType: TextInputType.number,
@@ -428,17 +532,16 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
                         }
                       }
                     },
-              child: saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save'),
+                  child: saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
             ),
           ],
         ),
-      ),
       ),
     );
     if (ok == true) await _load();
@@ -567,8 +670,42 @@ class _PushStatusSectionState extends ConsumerState<_PushStatusSection> {
                 ],
               ),
               const SizedBox(height: 4),
+              _StatusRow(
+                icon: _status?['firebaseEmailConfigured'] == true
+                    ? LucideIcons.checkCircle
+                    : LucideIcons.xCircle,
+                ok: _status?['firebaseEmailConfigured'] == true,
+                text: _status?['firebaseEmailConfigured'] == true
+                    ? 'Service account email configured'
+                    : 'Service account email missing',
+              ),
+              _StatusRow(
+                icon: _status?['firebaseKeyConfigured'] == true
+                    ? LucideIcons.checkCircle
+                    : LucideIcons.xCircle,
+                ok: _status?['firebaseKeyConfigured'] == true,
+                text: _status?['firebaseKeyConfigured'] == true
+                    ? 'Private key configured'
+                    : 'Private key missing',
+              ),
+              const SizedBox(height: 4),
               Text('Device tokens: $totalTokens (users: $usersWithTokens)',
                   style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+              if ((_status?['pendingWithdrawals'] as int? ?? 0) > 0) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(LucideIcons.alertTriangle,
+                        size: 14, color: AppColors.gold),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${_status?['pendingWithdrawals']} payout${_status?['pendingWithdrawals'] == 1 ? '' : 's'} waiting for confirmation',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: AppColors.gold, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
               if (!configured) ...[
                 const SizedBox(height: 8),
                 Container(
@@ -605,6 +742,42 @@ class _PushStatusSectionState extends ConsumerState<_PushStatusSection> {
   }
 }
 
+/// Small check/cross row used in the push status card.
+class _StatusRow extends StatelessWidget {
+  final IconData icon;
+  final bool ok;
+  final String text;
+
+  const _StatusRow({
+    required this.icon,
+    required this.ok,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: ok ? AppColors.primary : AppColors.danger),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ok ? AppColors.textMuted : AppColors.danger,
+                fontWeight: ok ? FontWeight.w400 : FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TicketsSection extends ConsumerStatefulWidget {
   const _TicketsSection();
 
@@ -617,6 +790,7 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
   bool _loading = true;
   String? _error;
   String _statusFilter = 'all';
+  String _assistantName = 'Kingdom Sponsor Care Team';
 
   @override
   void initState() {
@@ -631,8 +805,14 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
     });
     try {
       final status = _statusFilter == 'all' ? '' : _statusFilter;
-      final tickets = await ref.read(apiClientProvider).getAdminTickets(status: status);
-      if (mounted) setState(() => _tickets = tickets);
+      final (tickets, assistantName) =
+          await ref.read(apiClientProvider).getAdminTickets(status: status);
+      if (mounted) {
+        setState(() {
+          _tickets = tickets;
+          _assistantName = assistantName;
+        });
+      }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
@@ -640,6 +820,84 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _editAssistantName() async {
+    final controller = TextEditingController(text: _assistantName);
+    String? errorText;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Support assistant'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'The name is signed under automatic confirmations and '
+                  'reply SMS texts sent to users.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLength: 60,
+                  decoration: const InputDecoration(
+                    labelText: 'Assistant name',
+                    prefixIcon: Icon(LucideIcons.user, size: 18),
+                  ),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 4),
+                  Text(errorText!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                final name = controller.text.trim();
+                if (name.isEmpty) {
+                  setDialogState(() => errorText = 'Name is required.');
+                  return;
+                }
+                try {
+                  await ref.read(apiClientProvider).setSupportAssistantName(name);
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx, true);
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('Assistant name saved as "$name"')),
+                    );
+                  }
+                } on ApiException catch (e) {
+                  if (ctx.mounted) {
+                    setDialogState(() => errorText = e.message);
+                  }
+                } catch (_) {
+                  if (ctx.mounted) {
+                    setDialogState(() => errorText = 'Could not save. Try again.');
+                  }
+                }
+              },
+              icon: const Icon(LucideIcons.save, size: 16),
+              label: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (ok == true) await _load();
   }
 
   String _statusLabel(String? status) {
@@ -749,6 +1007,13 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
     );
   }
 
+  static const _quickReplies = <String>[
+    'Hi, thank you for reaching out. We are looking into this and will update you soon.',
+    'Thanks for your patience. Your payout has been processed and should reflect shortly.',
+    'Sorry for the wait — this has been escalated and we will reply as soon as we have an update.',
+    'Thank you for the report. This has been fixed on our end — please try again and let us know if it persists.',
+  ];
+
   Future<void> _reply(Map<String, dynamic> ticket) async {
     final text = TextEditingController();
     var saving = false;
@@ -756,69 +1021,98 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: Text('Reply to #${ticket['id']}'),
-            content: TextField(
-              controller: text,
-              maxLines: 4,
-              maxLength: 2000,
-              decoration: const InputDecoration(
-                labelText: 'Reply (user is notified by push; SMS if no app)',
-                alignLabelWithHint: true,
-              ),
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('Reply to #${ticket['id']}'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Quick replies',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final q in _quickReplies)
+                      ActionChip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(
+                          q,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        onPressed: () => setDialogState(() => text.text = q),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: text,
+                  maxLines: 4,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'Reply (user is notified by push; SMS if no app)',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              ListenableBuilder(
-                listenable: text,
-                builder: (context, _) {
-                  final ready = text.text.trim().isNotEmpty;
-                  return FilledButton(
-                    onPressed: saving || !ready
-                        ? null
-                        : () async {
-                        setDialogState(() => saving = true);
-                        try {
-                          await ref.read(apiClientProvider).replySupportTicket(
-                              ticket['id'] as int, text.text.trim());
-                          if (ctx.mounted) {
-                            Navigator.pop(ctx, true);
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Reply sent to the user')),
-                            );
-                          }
-                        } on ApiException catch (e) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx)
-                                .showSnackBar(SnackBar(content: Text(e.message)));
-                          }
-                        } catch (_) {
-                          setDialogState(() => saving = false);
-                          if (ctx.mounted) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Could not send. Try again.')),
-                            );
-                          }
-                        }
-                      },
-                    child: saving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Send'),
-                  );
-                },
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            ListenableBuilder(
+              listenable: text,
+              builder: (context, _) {
+                final ready = text.text.trim().isNotEmpty;
+                return FilledButton(
+                  onPressed: saving || !ready
+                      ? null
+                      : () async {
+                          setDialogState(() => saving = true);
+                          try {
+                            await ref.read(apiClientProvider).replySupportTicket(
+                                ticket['id'] as int, text.text.trim());
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx, true);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('Reply sent to the user')),
+                              );
+                            }
+                          } on ApiException catch (e) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx)
+                                  .showSnackBar(SnackBar(content: Text(e.message)));
+                            }
+                          } catch (_) {
+                            setDialogState(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('Could not send. Try again.')),
+                              );
+                            }
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Send'),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -837,7 +1131,21 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
           title: 'Support tickets',
           trailing: _loading
               ? null
-              : TextButton(onPressed: _load, child: const Text('Refresh')),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _editAssistantName,
+                      icon: const Icon(LucideIcons.user, size: 14),
+                      label: Text(
+                        _assistantName,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    TextButton(onPressed: _load, child: const Text('Refresh')),
+                  ],
+                ),
         ),
         const SizedBox(height: 8),
         // Status filter
@@ -1449,45 +1757,21 @@ class _StatGrid extends StatelessWidget {
 
   const _StatGrid({required this.stats});
 
-  void _showBreakdown(BuildContext context, String title, List<(String, String)> rows) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text(
-                title,
-                style: Theme.of(ctx)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-            for (final (label, value) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(label,
-                          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textMuted)),
-                    ),
-                    Text(value,
-                        style: Theme.of(ctx)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w800)),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 16),
-          ],
+  void _openTile(
+    BuildContext context,
+    AdminTileKind kind,
+    String title,
+    IconData icon,
+    List<(String, String)> rows,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminTileDetailScreen(
+          title: title,
+          icon: icon,
+          color: AppColors.primary,
+          kind: kind,
+          breakdown: rows,
         ),
       ),
     );
@@ -1504,12 +1788,51 @@ class _StatGrid extends StatelessWidget {
       childAspectRatio: 1.6,
       children: [
         _StatCard(
-          icon: LucideIcons.tent,
+          icon: LucideIcons.trophy,
           label: 'Active campaigns',
           value: '${stats.activeCampaigns}',
           color: AppColors.primaryLight,
           onTap: () => context.push('/admin/campaigns'),
           info: 'Fundraisers currently open for donations. Tap to manage campaigns.',
+        ),
+        _StatCard(
+          icon: LucideIcons.walletCards,
+          label: 'Total raised (active)',
+          value: formatKwacha(stats.totalActiveRaisedCents),
+          color: AppColors.primary,
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.campaigns,
+            'Total raised',
+            LucideIcons.walletCards,
+            [
+              ('Total raised (active campaigns)', formatKwacha(stats.totalActiveRaisedCents)),
+              ('Total raised (all time)', formatKwacha(stats.totalRaisedCents)),
+              ('Active campaigns', '${stats.activeCampaigns}'),
+              ('Confirmed donations', '${stats.confirmedDonations}'),
+            ],
+          ),
+          info: 'Total confirmed donations across all active campaigns. Tap for the per-campaign breakdown.',
+        ),
+        _StatCard(
+          icon: LucideIcons.banknote,
+          label: 'Total processed',
+          value: formatKwacha(stats.totalProcessedCents),
+          color: AppColors.primary,
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.campaigns,
+            'Total processed',
+            LucideIcons.banknote,
+            [
+              ('Total processed (all time)', formatKwacha(stats.totalProcessedCents)),
+              ('Total raised (all time)', formatKwacha(stats.totalRaisedCents)),
+              ('Confirmed donations', '${stats.confirmedDonations}'),
+              ('Processing fees', formatKwacha(stats.platformFeesCents)),
+            ],
+          ),
+          info: 'Every kwacha that moved through the platform — confirmed '
+              'donations, successful payouts and fee sweeps — since launch.',
         ),
         _StatCard(
           icon: LucideIcons.users,
@@ -1524,13 +1847,19 @@ class _StatGrid extends StatelessWidget {
           label: 'Users',
           value: '${stats.usersTotal}',
           color: AppColors.gold,
-          onTap: () => _showBreakdown(context, 'Users', [
-            ('Total users', '${stats.usersTotal}'),
-            ('Approved hosts', '${stats.hostsTotal}'),
-            ('Distinct donors', '${stats.donors}'),
-            ('New (7 days)', '${stats.newUsers7d}'),
-            ('New (30 days)', '${stats.newUsers30d}'),
-          ]),
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.users,
+            'Users',
+            LucideIcons.userPlus,
+            [
+              ('Total users', '${stats.usersTotal}'),
+              ('Approved hosts', '${stats.hostsTotal}'),
+              ('Distinct donors', '${stats.donors}'),
+              ('New (7 days)', '${stats.newUsers7d}'),
+              ('New (30 days)', '${stats.newUsers30d}'),
+            ],
+          ),
           info: 'Every phone number that verified with an SMS code.',
         ),
         _StatCard(
@@ -1554,9 +1883,15 @@ class _StatGrid extends StatelessWidget {
           label: 'Pending hosts',
           value: '${stats.pendingApplications}',
           color: AppColors.gold,
-          onTap: () => _showBreakdown(context, 'Host applications', [
-            ('Waiting for approval', '${stats.pendingApplications}'),
-          ]),
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.applications,
+            'Host applications',
+            LucideIcons.hourglass,
+            [
+              ('Waiting for approval', '${stats.pendingApplications}'),
+            ],
+          ),
           info: 'Host applications waiting for your approval.',
         ),
         _StatCard(
@@ -1572,9 +1907,15 @@ class _StatGrid extends StatelessWidget {
           label: 'Pledges',
           value: '${stats.activePledges}',
           color: AppColors.gold,
-          onTap: () => _showBreakdown(context, 'Recurring pledges', [
-            ('Donors on monthly reminders', '${stats.activePledges}'),
-          ]),
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.pledges,
+            'Recurring pledges',
+            LucideIcons.calendarClock,
+            [
+              ('Donors on monthly reminders', '${stats.activePledges}'),
+            ],
+          ),
           info: 'Donors opted for monthly giving reminders.',
         ),
         _StatCard(
@@ -1582,9 +1923,15 @@ class _StatGrid extends StatelessWidget {
           label: 'Open tickets',
           value: '${stats.openTickets}',
           color: stats.openTickets > 0 ? AppColors.danger : AppColors.primary,
-          onTap: () => _showBreakdown(context, 'Support', [
-            ('Waiting for a reply', '${stats.openTickets}'),
-          ]),
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.tickets,
+            'Support tickets',
+            LucideIcons.messageCircle,
+            [
+              ('Waiting for a reply', '${stats.openTickets}'),
+            ],
+          ),
           info: 'Support messages waiting for a reply.',
         ),
         _StatCard(
@@ -1594,10 +1941,51 @@ class _StatGrid extends StatelessWidget {
           color: stats.pendingDeleteRequests > 0
               ? AppColors.danger
               : AppColors.primaryLight,
-          onTap: () => _showBreakdown(context, 'Campaign deletion', [
-            ('Pending approval', '${stats.pendingDeleteRequests}'),
-          ]),
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.deleteRequests,
+            'Campaign deletion',
+            LucideIcons.trash2,
+            [
+              ('Pending approval', '${stats.pendingDeleteRequests}'),
+            ],
+          ),
           info: 'Campaign deletion requests awaiting approval.',
+        ),
+        _StatCard(
+          icon: LucideIcons.gift,
+          label: 'Referral rewards',
+          value: '${stats.qualifiedReferrers}',
+          color: stats.qualifiedReferrers > 0
+              ? AppColors.primary
+              : AppColors.primaryLight,
+          onTap: () => _openTile(
+            context,
+            AdminTileKind.referrals,
+            'Referral rewards',
+            LucideIcons.gift,
+            [
+              ('Referrers waiting for reward', '${stats.qualifiedReferrers}'),
+            ],
+          ),
+          info: 'Users who reached the referral target and are waiting to be '
+              'rewarded by you. Tap to reward them.',
+        ),
+        _StatCard(
+          icon: LucideIcons.userCog,
+          label: 'Staff & restore',
+          value: '${stats.assistants}',
+          color: AppColors.primary,
+          onTap: () => context.push('/admin/staff'),
+          info: 'Manage assistant admins, restore deleted campaigns, review the audit log.',
+        ),
+        _StatCard(
+          icon: LucideIcons.pencil,
+          label: 'Edit requests',
+          value: '${stats.pendingEditRequests}',
+          color: stats.pendingEditRequests > 0 ? AppColors.primary : AppColors.primaryLight,
+          onTap: () => context.push('/admin/edit-requests'),
+          info: 'Host-submitted campaign changes awaiting your approval.',
         ),
       ],
     );
@@ -1881,11 +2269,14 @@ class _ApplicationsSection extends ConsumerWidget {
         final controller = TextEditingController();
         return AlertDialog(
           title: const Text('Reject application'),
-          content: TextField(
-            controller: controller,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Reason (shown to the applicant)',
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: TextField(
+              controller: controller,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Reason (shown to the applicant)',
+              ),
             ),
           ),
           actions: [
@@ -2005,10 +2396,153 @@ class _FailedLoginsSectionState extends ConsumerState<_FailedLoginsSection> {
   }
 }
 
+/// Superadmin-editable Telegram intruder-alert channel (bot token + chat id).
+class _TelegramConfigSection extends ConsumerStatefulWidget {
+  const _TelegramConfigSection();
+
+  @override
+  ConsumerState<_TelegramConfigSection> createState() => _TelegramConfigSectionState();
+}
+
+class _TelegramConfigSectionState extends ConsumerState<_TelegramConfigSection> {
+  final _tokenController = TextEditingController();
+  final _chatController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+  bool _configured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _tokenController.dispose();
+    _chatController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ref.read(apiClientProvider).getTelegramConfig();
+      if (mounted) {
+        setState(() {
+          _configured = res['configured'] == true;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await ref.read(apiClientProvider).setTelegramConfig(
+            token: _tokenController.text.trim(),
+            chatId: _chatController.text.trim(),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Telegram alert channel saved')),
+        );
+      }
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.send, size: 18, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text('Telegram alerts',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                const Spacer(),
+                if (!_loading)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _configured ? AppColors.primary.withValues(alpha: 0.12) : AppColors.gold.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _configured ? 'Active' : 'Not set',
+                      style: TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w800,
+                          color: _configured ? AppColors.primary : AppColors.gold),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Intruder alerts and critical events are also sent to this Telegram chat (on top of SMS + push).',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tokenController,
+              decoration: const InputDecoration(
+                labelText: 'Bot token',
+                hintText: '123456:ABC-DEF...',
+                prefixIcon: Icon(LucideIcons.key, size: 16),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _chatController,
+              decoration: const InputDecoration(
+                labelText: 'Chat ID',
+                hintText: '-1001234567890',
+                prefixIcon: Icon(LucideIcons.hash, size: 16),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'How to: create a bot via @BotFather, then message it and open '
+              'https://api.telegram.org/bot<TOKEN>/getUpdates to find your chat id.',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(LucideIcons.save, size: 16),
+                label: Text(_saving ? 'Saving…' : 'Save Telegram channel'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Superadmin-editable SMS network status banner text.
 class _MtnStatusSection extends ConsumerStatefulWidget {
   const _MtnStatusSection();
-
   @override
   ConsumerState<_MtnStatusSection> createState() => _MtnStatusSectionState();
 }
@@ -2016,6 +2550,8 @@ class _MtnStatusSection extends ConsumerStatefulWidget {
 class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
   String? _text;
   bool _loading = true;
+  Map<String, String> _netStatus = {};
+  bool _savingNets = false;
 
   @override
   void initState() {
@@ -2026,12 +2562,39 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
   Future<void> _load() async {
     try {
       final res = await ref.read(apiClientProvider).get('/api/admin/sms-status');
+      final nets = await ref.read(apiClientProvider).getNetworkStatus();
       setState(() {
         _text = res['text'] as String? ?? '';
+        _netStatus = (nets['networks'] as Map<String, dynamic>? ?? {})
+            .map((k, v) => MapEntry(k, v as String? ?? 'ok'));
         _loading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _saveNetworks() async {
+    setState(() => _savingNets = true);
+    try {
+      await ref.read(apiClientProvider).setNetworkStatus(_netStatus);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Network statuses saved')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save network statuses.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingNets = false);
     }
   }
 
@@ -2077,11 +2640,49 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
                     _text ?? 'No status message set.',
                     style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                   ),
+            const SizedBox(height: 12),
+            Text(
+              'SMS delivery per network (blocks login codes when down):',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => _edit(theme),
-              icon: const Icon(LucideIcons.pencil, size: 16),
-              label: const Text('Edit'),
+            if (_loading)
+              const LinearProgressIndicator()
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final entry in _netStatus.entries)
+                    _NetworkChip(
+                      network: entry.key,
+                      down: entry.value == 'down',
+                      onChanged: (down) => setState(() {
+                        _netStatus[entry.key] = down ? 'down' : 'ok';
+                      }),
+                    ),
+                ],
+              ),
+            if (!_loading && _savingNets)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _edit(theme),
+                  icon: const Icon(LucideIcons.pencil, size: 16),
+                  label: const Text('Edit'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _loading || _savingNets ? null : _saveNetworks,
+                  icon: const Icon(LucideIcons.wifiOff, size: 16),
+                  label: const Text('Save network status'),
+                ),
+              ],
             ),
           ],
         ),
@@ -2097,11 +2698,11 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
     await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: AlertDialog(
-            title: const Text('Edit SMS network status'),
-            content: Form(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit SMS network status'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2124,38 +2725,78 @@ class _MtnStatusSectionState extends ConsumerState<_MtnStatusSection> {
                 ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: saving ? null : () async {
-                  if (!formKey.currentState!.validate()) return;
-                  setDialogState(() => saving = true);
-                  try {
-                    await _save(controller.text.trim());
-                    if (ctx.mounted) {
-                      Navigator.pop(ctx, true);
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('SMS status updated.')),
-                      );
-                    }
-                  } catch (e) {
-                    setDialogState(() => saving = false);
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-                    }
-                  }
-                },
-                child: saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save'),
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving ? null : () async {
+                if (!formKey.currentState!.validate()) return;
+                setDialogState(() => saving = true);
+                try {
+                  await _save(controller.text.trim());
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx, true);
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('SMS status updated.')),
+                    );
+                  }
+                } catch (e) {
+                  setDialogState(() => saving = false);
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+                  }
+                }
+              },
+              child: saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Save'),
+            ),
+          ],
         ),
       ),
     );
     controller.dispose();
+  }
+}
+
+/// Toggle for one network's SMS health (mtn/airtel/zamtel/zedmobile).
+class _NetworkChip extends StatelessWidget {
+  const _NetworkChip({
+    required this.network,
+    required this.down,
+    required this.onChanged,
+  });
+
+  final String network;
+  final bool down;
+  final ValueChanged<bool> onChanged;
+
+  static const _labels = {
+    'mtn': 'MTN',
+    'airtel': 'Airtel',
+    'zamtel': 'Zamtel',
+    'zedmobile': 'ZedMobile',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _labels[network] ?? network;
+    return FilterChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(down ? LucideIcons.alertCircle : LucideIcons.checkCircle2,
+              size: 14, color: down ? const Color(0xFFB3261E) : const Color(0xFF1B873F)),
+          const SizedBox(width: 4),
+          Text(label),
+        ],
+      ),
+      selected: down,
+      selectedColor: const Color(0xFFFFEBE9),
+      onSelected: (_) => onChanged(!down),
+      tooltip: down ? '$label SMS is DOWN - login codes blocked' : '$label SMS is working',
+    );
   }
 }
 
@@ -2179,6 +2820,13 @@ class _BanSectionState extends ConsumerState<_BanSection> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  bool get _banReady {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) return false;
+    if (_banKind == 'host') return true;
+    return _targetController.text.trim().isNotEmpty;
   }
 
   @override
@@ -2206,7 +2854,15 @@ class _BanSectionState extends ConsumerState<_BanSection> {
     final target = _targetController.text.trim();
     final reason = _reasonController.text.trim();
     final banAllHosts = _banKind == 'host' && target.isEmpty;
-    if (target.isEmpty && !banAllHosts) return;
+
+    if (reason.isEmpty || (target.isEmpty && !banAllHosts)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Target and reason are required.')),
+        );
+      }
+      return;
+    }
     if (banAllHosts) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -2296,8 +2952,14 @@ class _BanSectionState extends ConsumerState<_BanSection> {
             const SizedBox(height: 8),
             TextField(
               controller: _targetController,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: _banKind == 'host' ? 'Leave empty to ban all hosts' : 'Phone or user ID',
+                labelText: _banKind == 'host'
+                    ? 'Leave empty to ban all hosts'
+                    : _banKind == 'user_id'
+                        ? 'User ID'
+                        : 'Phone number (e.g. 26097…)',
+                hintText: _banKind == 'host' ? 'All approved hosts' : null,
                 prefixIcon: Icon(LucideIcons.target, size: 18),
               ),
               keyboardType: _banKind == 'user_id'
@@ -2307,21 +2969,36 @@ class _BanSectionState extends ConsumerState<_BanSection> {
             const SizedBox(height: 8),
             TextField(
               controller: _reasonController,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Reason',
+                hintText: 'Why is this ban being applied?',
                 prefixIcon: Icon(LucideIcons.messageSquare, size: 18),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _banKind == 'host' || _targetController.text.trim().isNotEmpty
-                  ? _ban
-                  : null,
-              icon: const Icon(LucideIcons.ban, size: 16),
-              label: const Text('Ban'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _banReady
+                    ? _ban
+                    : null,
+                icon: const Icon(LucideIcons.ban, size: 16),
+                label: const Text('Ban'),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              ),
             ),
+            if (!_banReady) ...[
+              const SizedBox(height: 4),
+              Text(
+                _banKind == 'host'
+                    ? 'A reason is required.'
+                    : 'Target and reason are required.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.textMuted, fontSize: 11),
+              ),
+            ],
             const SizedBox(height: 16),
             if (_loading)
               const LinearProgressIndicator()
@@ -2331,10 +3008,8 @@ class _BanSectionState extends ConsumerState<_BanSection> {
               Text('No banned users.', style: theme.textTheme.bodySmall)
             else
               SizedBox(
-                height: 200,
+                height: 220,
                 child: ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: _banned.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) {
@@ -2359,52 +3034,6 @@ class _BanSectionState extends ConsumerState<_BanSection> {
                   },
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Explains how the app's URL system works: deep links and share links.
-class _UrlExplanationSection extends ConsumerWidget {
-  const _UrlExplanationSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionTitle(
-              icon: LucideIcons.link,
-              title: 'How links work',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '1. Deep link: kingdomsponsor://campaign/<id> — opens the app directly '
-              'to a campaign page. Used in push notifications and in-app links.',
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '2. Share link: {API_URL}/share/<id> — a web page that shows the campaign '
-              'and has an "Open in app" button. Used when sharing to WhatsApp, SMS, or email. '
-              'People without the app see the campaign on the web.',
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Both link types are generated automatically when a campaign is created. '
-              'The share button in the campaign detail screen uses the share link.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textMuted,
-                height: 1.5,
-              ),
-            ),
           ],
         ),
       ),

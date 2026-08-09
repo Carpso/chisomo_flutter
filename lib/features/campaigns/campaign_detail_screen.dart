@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 import '../../core/api_client.dart';
+import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -220,6 +221,82 @@ class _DetailBody extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 8),
+              if (c.hostName != null && c.hostName!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.user, size: 14, color: AppColors.textMuted),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'Hosted by ${c.hostName}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.textMuted),
+                              ),
+                            ),
+                            if (c.hostVerified) ...[
+                              const SizedBox(width: 4),
+                              Icon(LucideIcons.badgeCheck,
+                                  size: 13, color: AppColors.primary),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (c.isPrivate) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.textMuted.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: AppColors.textMuted.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(LucideIcons.lock,
+                                  size: 11, color: AppColors.textMuted),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Private',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textMuted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (c.category.isNotEmpty && c.category != 'Other') ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: AppColors.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            c.category,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
               Text(c.description, style: theme.textTheme.bodyMedium),
               if (c.endsAt != null) ...[
                 const SizedBox(height: 12),
@@ -421,6 +498,9 @@ class _DetailBody extends ConsumerWidget {
               const SizedBox(height: 20),
               _AnnouncementsSection(campaignId: c.id),
               const SizedBox(height: 20),
+              if (c.hostOrg != null && c.hostOrg!.isNotEmpty)
+                _MoreFromOrgSection(campaign: c),
+              const SizedBox(height: 20),
               Text(
                 'Recent donors',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
@@ -541,6 +621,74 @@ class _DetailBody extends ConsumerWidget {
   }
 }
 
+/// Shows other active campaigns from the same church/organisation so users can
+/// see everything their community is raising for in one place.
+class _MoreFromOrgSection extends ConsumerWidget {
+  final Campaign campaign;
+
+  const _MoreFromOrgSection({required this.campaign});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final org = campaign.hostOrg ?? '';
+    final all = ref.watch(campaignsProvider).value ?? const <Campaign>[];
+    final others = all
+        .where((c) =>
+            c.id != campaign.id &&
+            c.hostOrg != null &&
+            c.hostOrg == org &&
+            c.status == 'active')
+        .toList();
+    if (others.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'More from $org',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'All the ways this church / organisation is raising funds.',
+          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        for (final o in others.take(4))
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              dense: true,
+              leading: SizedBox(
+                width: 44,
+                height: 44,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CampaignImage(campaign: o, fit: BoxFit.cover),
+                ),
+              ),
+              title: Text(o.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              subtitle: Text('${o.raisedLabel} raised',
+                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+              trailing: const Icon(LucideIcons.chevronRight, size: 18),
+              onTap: () => context.push('/campaign/${o.id}'),
+            ),
+          ),
+        if (others.length > 4)
+          TextButton.icon(
+            onPressed: () => context.push('/'),
+            icon: const Icon(LucideIcons.search, size: 16),
+            label: Text('See all ${others.length} campaigns'),
+          ),
+      ],
+    );
+  }
+}
+
 class _AnnouncementsSection extends ConsumerStatefulWidget {
   final int campaignId;
 
@@ -614,7 +762,7 @@ class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        '${a['author'] ?? 'Host'} Â· ${(a['createdAt'] as String? ?? '').replaceFirst(' ', ' Â· ')}',
+                        '${a['author'] ?? 'Host'} · ${safeDate(a['createdAt'])}',
                       ),
                     ),
                 ],

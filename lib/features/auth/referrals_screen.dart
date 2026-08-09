@@ -30,6 +30,9 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
   String _shareUrl = '';
   int _total = 0;
   int _last30d = 0;
+  int _threshold = 5;
+  bool _eligible = false;
+  String? _rewardedAt;
   List<dynamic> _referrals = [];
 
   Future<void> _load() async {
@@ -45,7 +48,10 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
       setState(() {
         _code = me['code'] as String? ?? '';
         _shareUrl = me['shareUrl'] as String? ?? '';
-        _total = res['total'] as int? ?? 0;
+        _total = me['total'] as int? ?? res['total'] as int? ?? 0;
+        _threshold = me['threshold'] as int? ?? 5;
+        _eligible = me['eligible'] as bool? ?? false;
+        _rewardedAt = me['rewardedAt'] as String?;
         _last30d = res['last30d'] as int? ?? 0;
         _referrals = res['referrals'] as List<dynamic>? ?? [];
       });
@@ -185,6 +191,61 @@ class _ReferralsScreenState extends ConsumerState<ReferralsScreen> {
                                   ),
                                 ),
                               ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(LucideIcons.gift, color: AppColors.primary, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _rewardedAt != null
+                                        ? 'You were rewarded for your referrals!'
+                                        : _eligible
+                                            ? 'Qualified for a reward — admin will be in touch!'
+                                            : 'Referral reward progress',
+                                    style: theme.textTheme.titleSmall
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: LinearProgressIndicator(
+                                value: _threshold <= 0
+                                    ? 0
+                                    : (_total / _threshold).clamp(0.0, 1.0),
+                                minHeight: 10,
+                                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _rewardedAt != null
+                                  ? 'Rewarded on $_rewardedAt.'
+                                  : _eligible
+                                      ? 'You reached $_threshold referrals. Keep an eye on your '
+                                          'notifications — the admin rewards qualifying referrers.'
+                                      : '$_total of $_threshold referrals — reach the target to '
+                                          'qualify for a reward from the admin.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: _eligible
+                                    ? AppColors.primary
+                                    : AppColors.textMuted,
+                                fontWeight: _eligible ? FontWeight.w700 : null,
+                              ),
                             ),
                           ],
                         ),
