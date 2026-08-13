@@ -232,6 +232,64 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                           const SizedBox(height: 12),
                           const _PushBroadcastSection(),
                           const SizedBox(height: 12),
+                          if (_can('settings'))
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.image, color: AppColors.primary, size: 20),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Sample images',
+                                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                          Text('Upload posters hosts & events can reuse',
+                                              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    FilledButton.icon(
+                                      onPressed: () => context.push('/admin/sample-images'),
+                                      icon: const Icon(LucideIcons.upload, size: 15),
+                                      label: const Text('Manage'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          if (_can('settings'))
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.ticket, color: AppColors.primary, size: 20),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Fees & commissions',
+                                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                          Text('Event finder\'s fee, platform %, minimums (MoMo + card)',
+                                              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    FilledButton.icon(
+                                      onPressed: () => context.push('/admin/event-commission'),
+                                      icon: const Icon(LucideIcons.wallet, size: 15),
+                                      label: const Text('Edit'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(14),

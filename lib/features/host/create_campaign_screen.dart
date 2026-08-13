@@ -60,6 +60,91 @@ const kSampleCampaignImages = [
   'assets/campaign_samples/cat_business_real.jpg',
 ];
 
+/// A starter template for hosts creating a campaign.
+class _CampaignTemplate {
+  final String label;
+  final IconData icon;
+  final String title;
+  final String description;
+  final String category;
+  final int goalK;
+  final String? sampleImage;
+
+  const _CampaignTemplate({
+    required this.label,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.category,
+    this.goalK = 10000,
+    this.sampleImage,
+  });
+}
+
+/// Ready-to-use campaign templates so hosts launch fast without a blank page.
+const kCampaignTemplates = <_CampaignTemplate>[
+  _CampaignTemplate(
+    label: 'School Fees',
+    icon: LucideIcons.graduationCap,
+    title: 'School Fees Fundraiser',
+    description: 'We are raising funds to cover school fees for [student(s)] so they can continue their education. '
+        'Every contribution helps keep them in school this term.',
+    category: 'Education & School Fees',
+    goalK: 15000,
+    sampleImage: 'assets/campaign_samples/cat_education_real.jpg',
+  ),
+  _CampaignTemplate(
+    label: 'Medical',
+    icon: LucideIcons.heartPulse,
+    title: 'Medical Expenses Fundraiser',
+    description: 'Help us cover urgent medical treatment for [patient]. '
+        'Your donation goes directly towards hospital bills, medication and care.',
+    category: 'Medical & Health',
+    goalK: 20000,
+    sampleImage: 'assets/campaign_samples/cat_medical_real.jpg',
+  ),
+  _CampaignTemplate(
+    label: 'Church Project',
+    icon: LucideIcons.building2,
+    title: 'Church Building / Project Fund',
+    description: 'Our church community is raising funds for [project — new roof, sound system, missions trip]. '
+        'Join us in building a stronger house of worship.',
+    category: 'Church & Ministry',
+    goalK: 50000,
+    sampleImage: 'assets/campaign_samples/cat_church_ministry_real.jpg',
+  ),
+  _CampaignTemplate(
+    label: 'Children & Orphans',
+    icon: LucideIcons.heart,
+    title: 'Support Children & Orphans',
+    description: 'Help provide food, clothing, school supplies and love to children in need. '
+        'Together we can give every child a brighter future.',
+    category: 'Children & Orphans',
+    goalK: 10000,
+    sampleImage: 'assets/campaign_samples/cat_children_real.jpg',
+  ),
+  _CampaignTemplate(
+    label: 'Community Water',
+    icon: LucideIcons.droplets,
+    title: 'Community Borehole / Water Project',
+    description: 'Our community needs clean water. Help us drill a borehole and install a pump '
+        'so every household has safe drinking water.',
+    category: 'Community Development',
+    goalK: 30000,
+    sampleImage: 'assets/campaign_samples/cat_community_real.jpg',
+  ),
+  _CampaignTemplate(
+    label: 'Funeral Support',
+    icon: LucideIcons.heart,
+    title: 'Funeral & Burial Support',
+    description: 'Help us give [deceased] a dignified burial and support the family through this difficult time. '
+        'Any contribution, however small, means the world.',
+    category: 'Funeral & Memorial',
+    goalK: 8000,
+    sampleImage: 'assets/campaign_samples/cat_funeral_real.jpg',
+  ),
+];
+
 /// Suggested sample image per campaign category (falls back to the generic set).
 const kSampleImageForCategory = <String, String>{
   'Church & Ministry': 'assets/campaign_samples/cat_church_ministry_real.jpg',
@@ -233,6 +318,17 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
 
   bool _sampleSelected(String assetPath) =>
       _logo != null && _logo!.name == assetPath.split('/').last;
+
+  void _applyTemplate(_CampaignTemplate t) {
+    setState(() {
+      _titleController.text = t.title;
+      _descriptionController.text = t.description;
+      _category = t.category;
+      _goalController.text = t.goalK.toString();
+      _hasGoal = t.goalK > 0;
+      if (t.sampleImage != null) _pickSample(t.sampleImage!);
+    });
+  }
 
   Future<void> _save() async {
     final title = _titleController.text.trim();
@@ -463,6 +559,23 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
           bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         children: [
+          if (!_editing) ...[
+            Text('Start from a template', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in kCampaignTemplates)
+                  ActionChip(
+                    avatar: Icon(t.icon, size: 15, color: AppColors.primary),
+                    label: Text(t.label),
+                    onPressed: () => _applyTemplate(t),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _titleController,
             decoration: const InputDecoration(

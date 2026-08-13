@@ -112,15 +112,6 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
       appBar: AppBar(
         title: const Text('Event'),
         actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.share2),
-            tooltip: 'Share event',
-            onPressed: () async {
-              final d = detail.value;
-              if (d == null) return;
-              await showShareSheet(context, ref, d.campaign);
-            },
-          ),
           if (ref.watch(authControllerProvider).value?.canScope('campaigns') == true)
             IconButton(
               icon: const Icon(LucideIcons.trash2),

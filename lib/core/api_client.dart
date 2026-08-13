@@ -328,6 +328,11 @@ class ApiClient {
     return post('/api/admin/announcements/$id/reject', {'reason': reason}, auth: true);
   }
 
+  /// User/host: export a personal backup of everything tied to this account.
+  Future<Map<String, dynamic>> getMyBackup() {
+    return get('/api/me/backup', auth: true);
+  }
+
   /// Sets up (or updates) a monthly reminder pledge on a campaign.
   Future<Map<String, dynamic>> createPledge(
     int campaignId,
@@ -973,6 +978,36 @@ class ApiClient {
     final query = <String>['limit=$limit'];
     if (q.trim().isNotEmpty) query.add('q=${Uri.encodeQueryComponent(q.trim())}');
     return get('/api/admin/emails?${query.join('&')}', auth: true);
+  }
+
+  /// Public: admin-uploaded sample images hosts/events can use as posters.
+  Future<List<String>> getSampleImages() async {
+    final res = await get('/api/sample-images');
+    return (res['images'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+  }
+
+  /// Admin: list uploaded sample images.
+  Future<List<String>> getAdminSampleImages() async {
+    final res = await get('/api/admin/sample-images', auth: true);
+    return (res['images'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+  }
+
+  /// Admin: upload a sample image hosts/events can reuse as a poster.
+  Future<Map<String, dynamic>> uploadSampleImage(List<int> bytes, String filename) async {
+    final mime = _detectImageMime(bytes, filename);
+    final req = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/api/admin/sample-images'),
+    )
+      ..headers['Authorization'] = 'Bearer $token'
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mime));
+    final res = await _send(() => req.send().then((s) => http.Response.fromStream(s)));
+    return _decode(res);
+  }
+
+  /// Admin: remove a sample image.
+  Future<Map<String, dynamic>> deleteSampleImage(String url) {
+    return delete('/api/admin/sample-images?url=${Uri.encodeQueryComponent(url)}', auth: true);
   }
 
   /// Admin: add or update an assistant's permission scopes.

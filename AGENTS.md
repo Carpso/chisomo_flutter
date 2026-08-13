@@ -51,8 +51,8 @@
 - Linked account donation collaboration view
 - Deep links: `kingdomsponsor://campaign/<id>`, `kingdomsponsor://donate/<id>`
 - Receipt download from donation success screen
-- Processing fees: K0.24 + 1% (K3 minimum) per transaction
-- **Card donations** (Visa/Mastercard/Amex) via Lipila hosted checkout (`POST /api/campaigns/:id/contribute-card` → `cardRedirectionUrl`; donate screen has a Mobile Money / Card toggle). Disbursements remain mobile-money only. Card fees: 2% (K5 min) + ZMW 0.24 + Lipila's card collection fee, configured via `CARD_PLATFORM_FEE_PCT` / `CARD_PLATFORM_MIN_FEE_CENTS` / `CARD_LIPILA_COLLECTION_FEE_PCT` (wrangler vars, live since 0.4.3; platform rates to be revised later).
+- Processing fees: K0.48 + 1% (K3 minimum) per transaction (see **Fee model** below)
+- **Card donations** (Visa/Mastercard/Amex) via Lipila hosted checkout (`POST /api/campaigns/:id/contribute-card` → `cardRedirectionUrl`; donate screen has a Mobile Money / Card toggle). Disbursements remain mobile-money only. Card fees: 2% (K5 min) + ZMW 0.48 + Lipila's card collection fee, configured via `CARD_PLATFORM_FEE_PCT` / `CARD_PLATFORM_MIN_FEE_CENTS` / `CARD_LIPILA_COLLECTION_FEE_PCT` (wrangler vars, live since 0.4.3; platform rates to be revised later).
 - **Referral rewards** — users enter a referral code at signup (manual field + deep links), one link per user (unique index), `referral_reward_threshold` admin setting (default 5 signups). When a referrer reaches the threshold they qualify; admin sees a "Referral rewards" tile on the dashboard and rewards them (`POST /api/admin/referrals/:userId/reward` → push + SMS notification, `users.referral_rewarded_at`).
 - **PDF receipts** capitalize every word of the donor name and campaign title.
 - **Admin dashboard "Total raised (active)" card** — sum of confirmed donations on active campaigns (`totalActiveRaisedCents` from `/api/admin/stats`), tap for per-campaign breakdown.
@@ -101,4 +101,81 @@
 - **Live feed respects donor privacy** — `/api/campaigns/:id/live/donations` returns `hidden: true` + `amountCents: null` for donors who chose "Hide the amount" (app renders •••); anonymous donors still show "Anonymous".
 - **Go Live casing + admin/team event delete** — the toggle now says "Go Live" / "End Live"; event detail shows a delete (trash) action for staff with `campaigns` scope.
 - **Dashboard speed** — `AdminController` runs stats/applications/campaigns in parallel (`Future.wait`); backend campaign-public loops parallelized with `Promise.all`/`allSettled` (admin campaigns ~23s → ~3s, campaigns list ~10s → ~1.3s).
+- **Carousel "Your campaigns" includes events** — the host slide shows events & campaigns with a ticket icon + "EVENT" tag; tapping routes to `/event/:id` for events, `/campaign/:id` otherwise; header becomes "Your events & campaigns" when the host has events.
+- **Personal data backup (users + hosts)** — `GET /api/me/backup` exports the account's profile, giving history, hosted campaigns/events, pledges, links and badges; Settings → "Backup my data" downloads it as JSON via the native share sheet.
+- **Admin sample images** — `POST/DELETE /api/admin/sample-images` + public `GET /api/sample-images` (settings scope); admin dashboard → "Sample images" manage screen; uploaded posters appear in the event create screen's online-sample picker.
+- **Create templates** — `kCampaignTemplates` (school fees, medical, church, children, water, funeral) and `kEventTemplates` (gala, concert, conference, walk, youth, medical) prefill title/description/category/goal/sample image on the create screens.
+- **Outreach copy** — `docs/OUTREACH_TEMPLATES.md` has WhatsApp/SMS/email templates for recruiting hosts, donors and event promoters.
+- **Share card is orange** — the generated 1080×1080 share card gradient is now the Kingdom Sponsor orange (was blue).
+- **Duplicate share buttons removed** — campaign + event detail screens keep one prominent Share button (next to the primary action), not a second icon in the app bar.
+- **Push token self-heal** — Settings → Test notification force-refreshes the FCM token (`deleteToken` + re-register) when FCM reports 0 deliveries, fixing stale tokens that show in the bell but never reach the phone.
+
+## Fee Model — what Kingdom Sponsor earns vs Lipila's fee
+
+Applies identically to **campaign donations** and **event ticket sales** (tickets go through the
+same `donationFees()` math in `src/fees.ts`). Fees are charged **on top** of the amount the donor
+pays — the campaign/event host receives the full sale amount.
+
+### Collection (donor pays, added to the amount they pay)
+
+| Item | MoMo (phone) | Card |
+|------|--------------|------|
+| Kingdom Sponsor (platform) | **K0.48 fixed + 1%** (min K3 → K3.48) | **K0.48 fixed + 2%** (min K5 → K5.48) |
+| Lipila (gateway) | 2.5% | 2.5% (Lipila card collection fee) |
+| **Donor pays total** | amount + K3.48/1% + 2.5% | amount + K5.48/2% + 2.5% |
+
+So on a K100 MoMo donation/ticket: donor pays **K105.98** = K100 + K3.48 (platform, 1% = K1 + K0.48 but min K3 → K3.48) + K2.50 (Lipila 2.5%). Kingdom Sponsor earns **K3.48**, Lipila earns **K2.50**, the campaign gets **K100**.
+
+### Disbursement (payout to host, deducted from the balance)
+
+| Item | MoMo |
+|------|------|
+| Lipila disbursement fee | 1.5% |
+| Kingdom Sponsor payout cut | **K0.48 fixed + 1%** (min K3 → K3.48) |
+| **Event finder's commission** (event tickets only) | **flat K10** (admin-set, `event_commission_finder_fee_cents`, default 1000) |
+| **Host receives** | balance − 1.5% − K3.48/1% − K10 (for events) |
+
+So Kingdom Sponsor earns **twice** per transaction: once on collection, once on disbursement —
+the same model Lipila uses. For **event ticket campaigns**, the payout additionally carries a flat
+**K10 finder's commission** (admin-configurable on the dashboard), deducted on top of the normal
+cut and Lipila's 1.5%. Example (K500 event payout): K7.50 (Lipila) + K5.48 (normal) + K10 (finder's)
+= **K477.02** to the host.
+
+Admin controls (all remote, no rebuild needed):
+- `event_commission_enabled` + `event_commission_finder_fee_cents` (MoMo) + `event_commission_card_finder_fee_cents` (card)
+- Editable platform fees: `platform_fee_pct`, `platform_min_fee_cents`, `platform_fixed_fee_cents`,
+  `card_platform_fee_pct`, `card_platform_min_fee_cents`, `card_lipila_collection_fee_pct`
+- Per-event waive: `waive_event_fees` on the campaign (admin campaigns screen); `waive_payout_fees`
+  waives the whole payout side.
+- All set from Admin → Tools & settings → "Fees & commissions" (`/api/admin/event-commission`).
+
+### Live configured values (wrangler vars)
+- `PLATFORM_FEE_PCT = "1"`, `PLATFORM_MIN_FEE_CENTS = "300"`, fixed `48` (hardcoded in fees.ts)
+- `LIPILA_COLLECTION_FEE_PCT = "2.5"`, `LIPILA_DISBURSEMENT_FEE_PCT = "1.5"`
+- `CARD_PLATFORM_FEE_PCT = "2"`, `CARD_PLATFORM_MIN_FEE_CENTS = "500"`, `CARD_LIPILA_COLLECTION_FEE_PCT = "2.5"`
+- Verified live via `/api/campaigns/:id` → `fees` object.
+
+### Where platform fees land
+- Collection fees: `contributions.platform_fee_cents` (confirmed) — swept to `SETTLEMENT_PHONE`
+  daily by `runFeeSweep` (only when ≥ K50) as `fee_sweeps`.
+- Disbursement fees: `withdrawals.platform_fee_cents` — settled via `settlePlatformFees`.
+- Admin sees totals under "Processing fees" on the dashboard (`stats.platformFeesCents`).
+
+### Event ticket sales example (VIP tier K500, MoMo)
+Donor pays K500 + K3.48 + K12.50 = **K515.98**. Kingdom Sponsor earns **K3.48**, Lipila **K12.50**,
+the host receives K500 (minus their payout fees later: K7.50 Lipila + K5.48 normal + K10 finder's).
+
+## Remote configuration (no rebuild needed)
+
+Everything below is editable from Admin → Tools & settings; the app reads it live from the API:
+- **Fees & commissions** (`/api/admin/event-commission`): event finder's fee (MoMo + card), platform
+  %/minimum/fixed for MoMo and card. Stored in `app_settings`, applied on every contribution/payout.
+- **Airtime** (`/api/admin/airtime/config`): enabled toggle, markup %, min/max amounts.
+- **Host badge** (`/api/admin/host/badge-config`): Basic/Pro/Annual prices + enabled.
+- **Promotions** (`/api/admin/promotion-config`): price, days, slot count.
+- **Referral threshold** (`/api/admin/referral-threshold`): signups needed to qualify.
+- **Network status / SMS notice / intruder alerts / Telegram / email**: admin-dashboard settings.
+- **Sample images** (`/api/admin/sample-images`): admin-uploaded posters hosts/events reuse.
+- Per-campaign/event flags: `waive_payout_fees`, `waive_event_fees` (admin campaigns screen).
+
 

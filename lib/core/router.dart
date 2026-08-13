@@ -19,6 +19,8 @@ import '../features/events/buy_ticket_screen.dart';
 import '../features/events/admin_events_screen.dart';
 import '../features/admin/admin_announcements_screen.dart';
 import '../features/admin/admin_emails_screen.dart';
+import '../features/admin/admin_sample_images_screen.dart';
+import '../features/admin/admin_event_commission_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/search/global_search_screen.dart';
 import '../features/team/team_chat_screen.dart';
@@ -403,6 +405,26 @@ final routerProvider = Provider<GoRouter>((ref) {
               final canDonations = authAsync.value?.canScope('donations') ?? false;
               if (!canDonations) return const CampaignListScreen();
               return const AdminEmailsScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/sample-images',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canSettings = authAsync.value?.canScope('settings') ?? false;
+              if (!canSettings) return const CampaignListScreen();
+              return const AdminSampleImagesScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/event-commission',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canSettings = authAsync.value?.canScope('settings') ?? false;
+              if (!canSettings) return const CampaignListScreen();
+              return const AdminEventCommissionScreen();
             },
           ),
           GoRoute(

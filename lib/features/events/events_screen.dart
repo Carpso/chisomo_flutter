@@ -130,7 +130,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
             child: CustomScrollView(
               slivers: [
                 if (trending.isNotEmpty) ...[
-                  SliverToBoxAdapter(child: _SectionLabel('Trending events', LucideIcons.flame)),
+                  SliverToBoxAdapter(child: _SectionLabel('Trending Events', LucideIcons.flame)),
                   SliverToBoxAdapter(
                     child: SizedBox(
                       height: 250,
@@ -146,7 +146,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                   const SliverToBoxAdapter(child: SizedBox(height: 16)),
                 ],
                 if (opened.isNotEmpty) ...[
-                  SliverToBoxAdapter(child: _SectionLabel('Recently opened', LucideIcons.clock)),
+                  SliverToBoxAdapter(child: _SectionLabel('Recently Opened', LucideIcons.clock)),
                   SliverToBoxAdapter(
                     child: SizedBox(
                       height: 160,
@@ -162,7 +162,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                   const SliverToBoxAdapter(child: SizedBox(height: 16)),
                 ],
                 if (private.isNotEmpty) ...[
-                  SliverToBoxAdapter(child: _SectionLabel('Private events you opened', LucideIcons.lock)),
+                  SliverToBoxAdapter(child: _SectionLabel('Private Events You Opened', LucideIcons.lock)),
                   const SliverToBoxAdapter(child: SizedBox(height: 4)),
                 ],
                 if (events.isEmpty)

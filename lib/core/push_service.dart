@@ -222,8 +222,17 @@ Future<bool> requestNotificationsViaSettings() async {
   return openAppSettings();
 }
 
-Future<void> _registerCurrentToken() async {
+Future<void> _registerCurrentToken({bool forceFresh = false}) async {
   try {
+    if (forceFresh) {
+      // A token FCM no longer accepts must be deleted first so getToken()
+      // issues a brand-new one (fixes "registered but never delivered").
+      try {
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (e) {
+        developer.log('deleteToken failed (ignored): $e', name: 'PushService');
+      }
+    }
     // Request a fresh token (FCM may have rotated it)
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null && token.isNotEmpty) {
@@ -262,6 +271,14 @@ Future<void> _registerToken(String token) async {
 Future<void> ensurePushRegistered() async {
   if (!await _ensurePermission()) return;
   await _registerCurrentToken();
+}
+
+/// Deletes and re-issues the FCM token, then re-registers it. Use when a push
+/// test reports the token is not being delivered (stale/rotated tokens get
+/// replaced with a fresh one FCM accepts).
+Future<void> refreshPushTokenForce() async {
+  if (!await _ensurePermission()) return;
+  await _registerCurrentToken(forceFresh: true);
 }
 
 /// Periodically re-register the token to handle silent token rotation by FCM.

@@ -161,9 +161,10 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
     final host = ref.read(hostProvider).value;
     if (host != null && host.campaigns.isNotEmpty) {
       final mine = host.campaigns.where((c) => c.status != 'deleted').toList();
+      final hasEvents = mine.any((c) => c.isEvent);
       for (var i = 0; i < mine.length; i += 3) {
         final chunk = mine.sublist(i, i + 3 > mine.length ? mine.length : i + 3);
-        items.add(_CarouselItem.hostCampaigns(chunk));
+        items.add(_CarouselItem.hostCampaigns(chunk, hasEvents: hasEvents));
       }
     }
     return items;
@@ -498,6 +499,10 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
 
       case _CarouselType.hostCampaigns:
         final mine = item.hostCampaigns;
+        final count = mine.length;
+        final label = count == 1
+            ? (mine.first.isEvent ? '1 event' : '1 campaign')
+            : (item.hasEvents ? '$count items' : '$count campaigns');
         return Card(
           clipBehavior: Clip.antiAlias,
           margin: EdgeInsets.zero,
@@ -521,9 +526,9 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                 children: [
                   Row(
                     children: [
-                      const Icon(LucideIcons.folderHeart, size: 18, color: AppColors.primary),
+                      Icon(item.hasEvents ? LucideIcons.ticket : LucideIcons.folderHeart, size: 18, color: AppColors.primary),
                       const SizedBox(width: 6),
-                      Text('Your campaigns',
+                      Text(item.hasEvents ? 'Your events & campaigns' : 'Your campaigns',
                           style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w800, color: AppColors.primary)),
                       const Spacer(),
@@ -534,7 +539,7 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          mine.length == 1 ? '1 campaign' : '${mine.length} campaigns',
+                          label,
                           style: const TextStyle(
                               fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
@@ -544,20 +549,13 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                   const SizedBox(height: 10),
                   for (final c in mine) ...[
                     InkWell(
-                      onTap: () => context.push('/campaign/${c.id}'),
+                      onTap: () => context.push(c.isEvent ? '/event/${c.id}' : '/campaign/${c.id}'),
                       borderRadius: BorderRadius.circular(8),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
                         child: Row(
                           children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: c.status == 'active' ? AppColors.primary : AppColors.textMuted,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
+                            Icon(c.isEvent ? LucideIcons.ticket : LucideIcons.folderHeart, size: 10, color: c.status == 'active' ? AppColors.primary : AppColors.textMuted),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -569,6 +567,10 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                               ),
                             ),
                             const SizedBox(width: 6),
+                            if (c.isEvent) ...[
+                              Text('EVENT', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppColors.gold)),
+                              const SizedBox(width: 4),
+                            ],
                             Icon(LucideIcons.chevronRight, size: 14, color: Colors.white70),
                           ],
                         ),
@@ -693,8 +695,9 @@ class _CarouselItem {
   final _CarouselType type;
   final Campaign? campaign;
   final List<Campaign> hostCampaigns;
-  _CarouselItem.campaign(this.campaign) : type = _CarouselType.campaign, hostCampaigns = const [];
-  _CarouselItem.hostCampaigns(this.hostCampaigns) : type = _CarouselType.hostCampaigns, campaign = null;
-  const _CarouselItem.buyAirtime() : type = _CarouselType.buyAirtime, campaign = null, hostCampaigns = const [];
-  const _CarouselItem.airtimeRewards() : type = _CarouselType.airtimeRewards, campaign = null, hostCampaigns = const [];
+  final bool hasEvents;
+  _CarouselItem.campaign(this.campaign) : type = _CarouselType.campaign, hostCampaigns = const [], hasEvents = false;
+  _CarouselItem.hostCampaigns(this.hostCampaigns, {this.hasEvents = false}) : type = _CarouselType.hostCampaigns, campaign = null;
+  const _CarouselItem.buyAirtime() : type = _CarouselType.buyAirtime, campaign = null, hostCampaigns = const [], hasEvents = false;
+  const _CarouselItem.airtimeRewards() : type = _CarouselType.airtimeRewards, campaign = null, hostCampaigns = const [], hasEvents = false;
 }

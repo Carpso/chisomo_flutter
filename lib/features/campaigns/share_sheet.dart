@@ -26,12 +26,12 @@ Future<XFile?> _generateShareCard(Campaign campaign) async {
     final canvas = ui.Canvas(recorder);
     const rect = ui.Rect.fromLTWH(0, 0, width, height);
 
-    // Background gradient.
+    // Background gradient (Kingdom Sponsor orange theme).
     final paint = ui.Paint()
       ..shader = ui.Gradient.linear(
         const ui.Offset(0, 0),
         const ui.Offset(width, height),
-        [const ui.Color(0xFF1d4ed8), const ui.Color(0xFF0f172a)],
+        [const ui.Color(0xFFE65100), const ui.Color(0xFF431407)],
       );
     canvas.drawRect(rect, paint);
 

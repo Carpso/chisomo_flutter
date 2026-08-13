@@ -37,6 +37,79 @@ const kEventBundledSamples = <({String label, String asset})>[
   (label: 'Workshop', asset: 'assets/event_samples/event_workshop.jpg'),
 ];
 
+/// A starter template for hosts creating an event.
+class _EventTemplate {
+  final String label;
+  final IconData icon;
+  final String title;
+  final String description;
+  final String category;
+  final bool ticketed;
+
+  const _EventTemplate({
+    required this.label,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.category,
+    this.ticketed = true,
+  });
+}
+
+/// Ready-to-use event templates so hosts launch fast without a blank page.
+const kEventTemplates = <_EventTemplate>[
+  _EventTemplate(
+    label: 'Fundraising Gala',
+    icon: LucideIcons.crown,
+    title: 'Charity Fundraising Gala 2026',
+    description: 'Join us for an evening of fine dining, live entertainment and giving. '
+        'Every ticket sold goes directly toward supporting [cause]. '
+        'Tables of 10 are available — bring your church, company or family.',
+    category: 'Other',
+  ),
+  _EventTemplate(
+    label: 'Concert',
+    icon: LucideIcons.music,
+    title: 'Live Worship Concert',
+    description: 'A powerful night of worship and praise raising funds for [cause]. '
+        'Come experience great music, testimonies and a community that gives together.',
+    category: 'Music & Worship',
+  ),
+  _EventTemplate(
+    label: 'Church Conference',
+    icon: LucideIcons.building2,
+    title: 'Annual Church Conference',
+    description: 'Our annual gathering of believers — teaching, fellowship and outreach. '
+        'Ticket sales help cover the venue and support our community programmes.',
+    category: 'Church & Ministry',
+  ),
+  _EventTemplate(
+    label: 'Charity Walk',
+    icon: LucideIcons.footprints,
+    title: 'Community Charity Walk',
+    description: 'Walk with us for [cause]! Register a ticket to join the walk and '
+        'help us reach our fundraising goal. All proceeds go directly to the community.',
+    category: 'Community Development',
+    ticketed: false,
+  ),
+  _EventTemplate(
+    label: 'Youth Event',
+    icon: LucideIcons.users,
+    title: 'Youth Empowerment Day',
+    description: 'A day of inspiration, mentorship and fun for young people. '
+        'Ticket sales fund our youth programmes and skills training.',
+    category: 'Youth & Sports',
+  ),
+  _EventTemplate(
+    label: 'Medical Fundraiser',
+    icon: LucideIcons.heartPulse,
+    title: 'Medical Fundraising Event',
+    description: 'A community gathering to raise funds for urgent medical expenses. '
+        'Every contribution brings us closer to the goal.',
+    category: 'Medical & Health',
+  ),
+];
+
 /// Dedicated, best-in-class Event creation UI (distinct from Campaigns).
 class CreateEventScreen extends ConsumerStatefulWidget {
   const CreateEventScreen({super.key});
@@ -142,6 +215,15 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
 
   bool _bundledSelected(String asset) => _logo?.name == asset.split('/').last;
 
+  void _applyTemplate(_EventTemplate t) {
+    setState(() {
+      _titleController.text = t.title;
+      _descriptionController.text = t.description;
+      _category = t.category;
+      _ticketed = t.ticketed;
+    });
+  }
+
   void _addInlineTier() {
     final name = _tierNameController.text.trim();
     final price = double.tryParse(_tierPriceController.text.trim()) ?? 0;
@@ -239,6 +321,22 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
       body: ListView(
         padding: EdgeInsets.all(16).copyWith(bottom: 16 + MediaQuery.viewInsetsOf(context).bottom),
         children: [
+          // Starter templates to help hosts launch fast.
+          Text('Start from a template', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final t in kEventTemplates)
+                ActionChip(
+                  avatar: Icon(t.icon, size: 15, color: AppColors.primary),
+                  label: Text(t.label),
+                  onPressed: () => _applyTemplate(t),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _titleController,
             decoration: const InputDecoration(labelText: 'Event title', hintText: 'e.g. Lusaka Fundraising Gala 2026'),
@@ -487,6 +585,36 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
                     ],
                   ),
                 ),
+              // Admin-uploaded sample images.
+              ...?ref.watch(adminSampleImagesProvider).value?.map((url) => GestureDetector(
+                onTap: () => setState(() {
+                  _sampleImageUrl = url;
+                  _logo = null;
+                  _sampleBytes = null;
+                }),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 74,
+                      height: 74,
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _sampleImageUrl == url ? AppColors.gold : Colors.transparent,
+                          width: 3,
+                        ),
+                      ),
+                      child: Image.network(url, fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            child: const Icon(LucideIcons.image, color: AppColors.textMuted),
+                          )),
+                    ),
+                  ],
+                ),
+              )),
             ],
           ),
           if (_logo != null) ...[

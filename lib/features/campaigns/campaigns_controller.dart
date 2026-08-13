@@ -299,6 +299,15 @@ class CampaignViewsController extends AsyncNotifier<List<Campaign>> {
 final campaignViewsProvider =
     AsyncNotifierProvider<CampaignViewsController, List<Campaign>>(CampaignViewsController.new);
 
+/// Admin-uploaded sample images shown on the host/event create screens.
+final adminSampleImagesProvider = FutureProvider<List<String>>((ref) async {
+  try {
+    return await ref.read(apiClientProvider).getSampleImages();
+  } catch (_) {
+    return const [];
+  }
+});
+
 class UnreadNotificationsController extends AsyncNotifier<int> {
   @override
   Future<int> build() async {

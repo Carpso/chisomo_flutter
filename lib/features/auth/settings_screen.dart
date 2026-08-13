@@ -1,9 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/api_client.dart';
 import '../../core/fx_service.dart';
@@ -43,6 +48,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _busy = false;
   bool _linksBusy = false;
   bool _testing = false;
+  bool _backingUp = false;
   bool _notificationsEnabled = true;
   String? _error;
   List<dynamic> _links = [];
@@ -96,17 +102,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _downloadBackup() async {
+    setState(() => _backingUp = true);
+    try {
+      final data = await ref.read(apiClientProvider).getMyBackup();
+      final json = const JsonEncoder.withIndent('  ').convert(data);
+      final dir = await getApplicationDocumentsDirectory();
+      final stamp = DateTime.now().toIso8601String().split('.').first.replaceAll(':', '-');
+      final file = File('${dir.path}/kingdom_sponsor_backup_$stamp.json');
+      await file.writeAsString(json, flush: true);
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          text: 'Kingdom Sponsor data backup ($stamp)',
+          files: [XFile(file.path, mimeType: 'application/json')],
+          subject: 'Kingdom Sponsor backup',
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not create the backup. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _backingUp = false);
+    }
+  }
+
   Future<void> _testNotification() async {
     setState(() => _testing = true);
     try {
-      // Make sure the permission is granted + the FCM token re-registered,
-      // then ask the backend to push a test to this device.
+      // Make sure the permission is granted + the FCM token re-registered.
+      // If FCM reports the token as undeliverable, force a brand-new token.
       await ensurePushRegistered();
-      final res = await ref.read(apiClientProvider).sendMyTestPush();
+      var res = await ref.read(apiClientProvider).sendMyTestPush();
+      var sent = (res['sentCount'] as num?)?.toInt() ?? 0;
+      if (sent == 0 && res['ok'] != false) {
+        // The registered token is stale/rotated — delete it and get a fresh
+        // one, then retry the test push once.
+        await refreshPushTokenForce();
+        res = await ref.read(apiClientProvider).sendMyTestPush();
+        sent = (res['sentCount'] as num?)?.toInt() ?? 0;
+      }
       if (!mounted) return;
       final err = res['error'] as String?;
       final msg = res['message'] as String?;
-      final sent = (res['sentCount'] as num?)?.toInt() ?? 0;
       if (err != null && res['ok'] == false) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
       } else {
@@ -114,11 +155,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SnackBar(
             content: Text(
               sent == 0
-                  ? 'Notification recorded in-app, but your phone has no registered '
-                      'device token yet — open the app fully and check notification permission, then try again.'
+                  ? 'Notification recorded in-app, but FCM is not delivering to this device. '
+                      'Open System Settings → Apps → Kingdom Sponsor → Notifications and allow them, then try again.'
                   : (msg ?? 'Test push sent — check your notification shade.'),
             ),
-            duration: const Duration(seconds: 5),
+            duration: const Duration(seconds: 6),
           ),
         );
       }
@@ -762,6 +803,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: const Text('Tips for giving, hosting and linking accounts'),
                   trailing: const Icon(LucideIcons.chevronRight, size: 18),
                   onTap: () => _showHowTos(context),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  leading: const Icon(LucideIcons.database, color: AppColors.primary),
+                  title: const Text('Backup my data'),
+                  subtitle: const Text('Download a copy of your profile, giving and hosted campaigns'),
+                  trailing: _backingUp
+                      ? const SizedBox(width: 18, height: 18, child: AppIconSpinner(size: 18))
+                      : const Icon(LucideIcons.download, size: 18, color: AppColors.textMuted),
+                  onTap: _backingUp ? null : _downloadBackup,
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(

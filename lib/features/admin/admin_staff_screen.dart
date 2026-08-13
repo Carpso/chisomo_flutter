@@ -46,13 +46,11 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
     _load();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (widget.startWithAdd && !_autoOpened && !_loading) {
+  /// Opens the add-assistant dialog once data has loaded, when the screen was
+  /// entered via the team chat's "Add team member" action.
+  void _maybeOpenAddDialog() {
+    if (widget.startWithAdd && !_autoOpened) {
       _autoOpened = true;
-      // Auto-open the add-assistant dialog once the data is ready, so the
-      // team chat's "Add team member" lands directly on the add flow.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _addAssistant();
       });
@@ -76,6 +74,7 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
         _actions = ac['actions'] as List<dynamic>? ?? [];
         _loading = false;
       });
+      _maybeOpenAddDialog();
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {

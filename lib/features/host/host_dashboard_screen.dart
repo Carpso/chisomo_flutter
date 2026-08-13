@@ -189,7 +189,9 @@ class HostDashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                'My campaigns',
+                data.campaigns.any((c) => c.isEvent)
+                    ? 'My campaigns & events'
+                    : 'My campaigns',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
@@ -197,7 +199,7 @@ class HostDashboardScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Text(
-                    'No campaigns yet. Tap "New campaign" to start fundraising.',
+                    'No campaigns or events yet. Tap "New campaign" or "New event" to start.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
                   ),
                 )

@@ -39,15 +39,6 @@ class CampaignDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Campaign'),
         actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.share2),
-            tooltip: 'Share',
-            onPressed: () async {
-              final detailValue = detail.value;
-              if (detailValue == null) return;
-              await showShareSheet(context, ref, detailValue.campaign);
-            },
-          ),
           Consumer(
             builder: (context, ref, _) {
               final isAdmin = ref.watch(authControllerProvider).value?.isAdmin ?? false;
