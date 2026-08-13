@@ -6,6 +6,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/fx_service.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -41,12 +42,14 @@ enum _PaymentMethod { mobileMoney, card }
 
 class _DonateScreenState extends ConsumerState<DonateScreen> {
   static const _presets = [5000, 10000, 20000, 50000, 100000];
+  static const _usdPresets = [500, 1000, 2000, 5000, 10000];
 
   final _amountController = TextEditingController();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   String _phoneE164 = '';
   int _selectedPreset = 10000;
+  int _selectedUsdPreset = 1000;
   bool _anonymous = false;
   bool _hideAmount = false;
   bool _submitting = false;
@@ -65,6 +68,10 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   @override
   void initState() {
     super.initState();
+    _currency = ref.read(currencyPrefProvider);
+    ref.read(fxServiceProvider).fetchRate().then((r) {
+      if (mounted) setState(() => _usdRate = r);
+    });
     final auth = ref.read(authControllerProvider).value;
     if (auth?.phone != null) _phoneE164 = auth!.phone!;
   }
@@ -79,14 +86,29 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
   }
 
   int get _amountCents {
-    if (_selectedPreset > 0) return _selectedPreset;
+    if (_currency == CurrencyPref.usd) {
+      if (_selectedUsdPreset > 0) {
+        // USD presets are stored in USD cents; convert to ZMW at live rate.
+        return _usdRate > 0 ? (_selectedUsdPreset * _usdRate).round() : 0;
+      }
+      final text = _amountController.text.replaceAll(',', '').trim();
+      final amount = double.tryParse(text) ?? 0;
+      return (amount * _usdRate * 100).round();
+    }
+    if (_selectedPreset > 0) {
+      return _selectedPreset;
+    }
     final text = _amountController.text.replaceAll(',', '').trim();
-    final kwacha = double.tryParse(text) ?? 0;
-    return (kwacha * 100).round();
+    final amount = double.tryParse(text) ?? 0;
+    return (amount * 100).round();
   }
 
+  double _usdRate = 0;
+
+  CurrencyPref _currency = CurrencyPref.zmw;
+
   /// Calculate total processing fees (platform + Lipila) for the current amount
-  /// and payment method. Cards: 2% (K5 min) + ZMW 0.24 + Lipila's card fee.
+  /// and payment method. Cards: 2% (K5 min) + ZMW 0.48 + Lipila's card fee.
   /// Returns null if fees config is unavailable — caller must handle.
   ({int platformFee, int lipilaFee, int totalFee, int totalPay})? _calculateFees(FeesInfo? cfg) {
     final amount = _amountCents;
@@ -341,6 +363,15 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     final avg = detail?.campaign.avgDonationCents ?? 0;
     final suggested = _suggested(avg);
 
+    // Events never use the donate flow — a stale /donate deep link or old
+    // button should land users on the proper ticket screen instead.
+    if (detail?.campaign.isEvent == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/event/${widget.campaignId}');
+      });
+      return const Center(child: AppIconSpinner());
+    }
+
     return ListView(
       padding: EdgeInsets.all(16).copyWith(
         bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
@@ -356,7 +387,12 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
                 borderRadius: BorderRadius.circular(12),
                 onTap: () => setState(() {
                   _selectedPreset = 0;
-                  _amountController.text = '${suggested ~/ 100}';
+                  _selectedUsdPreset = 0;
+                  if (_currency == CurrencyPref.usd && _usdRate > 0) {
+                    _amountController.text = (suggested / _usdRate / 100).toStringAsFixed(2);
+                  } else {
+                    _amountController.text = '${suggested ~/ 100}';
+                  }
                 }),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -391,34 +427,96 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final preset in _presets)
-              ChoiceChip(
-                label: Text(formatKwacha(preset)),
-                selected: _selectedPreset == preset,
-                onSelected: (_) => setState(() {
-                  _selectedPreset = preset;
-                  _amountController.clear();
-                }),
-              ),
-            ChoiceChip(
-              label: const Text('Custom'),
-              selected: _selectedPreset == 0,
-              onSelected: (_) => setState(() => _selectedPreset = 0),
-            ),
+        const SizedBox(height: 8),
+        SegmentedButton<CurrencyPref>(
+          segments: const [
+            ButtonSegment(value: CurrencyPref.zmw, label: Text('ZMW')),
+            ButtonSegment(value: CurrencyPref.usd, label: Text('USD')),
           ],
+          selected: {_currency},
+          onSelectionChanged: (s) => setState(() {
+            final next = s.first;
+            if (next != _currency) {
+              _currency = next;
+              // Keep the previously typed custom amount across the switch,
+              // but fall back to a sensible default preset so the UI is
+              // never left with no selection.
+              if (next == CurrencyPref.usd && _selectedUsdPreset == 0 && _amountController.text.trim().isEmpty) {
+                _selectedUsdPreset = 1000;
+              }
+              if (next == CurrencyPref.zmw && _selectedPreset == 0 && _amountController.text.trim().isEmpty) {
+                _selectedPreset = 10000;
+              }
+            }
+          }),
+          showSelectedIcon: false,
+          style: const ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            backgroundColor: WidgetStatePropertyAll(Color(0xFF151521)),
+            foregroundColor: WidgetStatePropertyAll(Colors.white),
+            side: WidgetStatePropertyAll(BorderSide(color: Color(0xFF2A2A3A))),
+          ),
         ),
-        if (_selectedPreset == 0)
+        const SizedBox(height: 12),
+        if (_currency == CurrencyPref.zmw) ...[
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final preset in _presets)
+                ChoiceChip(
+                  label: Text(formatKwacha(preset)),
+                  selected: _selectedPreset == preset,
+                  onSelected: (_) => setState(() {
+                    _selectedPreset = preset;
+                    _amountController.clear();
+                  }),
+                ),
+              ChoiceChip(
+                label: const Text('Custom'),
+                selected: _selectedPreset == 0,
+                onSelected: (_) => setState(() => _selectedPreset = 0),
+              ),
+            ],
+          ),
+        ] else ...[
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final preset in _usdPresets)
+                ChoiceChip(
+                  label: Text('\$${(preset / 100).toStringAsFixed(preset % 100 == 0 ? 0 : 2)}'),
+                  selected: _selectedUsdPreset == preset,
+                  onSelected: (_) => setState(() {
+                    _selectedUsdPreset = preset;
+                    _amountController.clear();
+                  }),
+                ),
+              ChoiceChip(
+                label: const Text('Custom'),
+                selected: _selectedUsdPreset == 0,
+                onSelected: (_) => setState(() => _selectedUsdPreset = 0),
+              ),
+            ],
+          ),
+        ],
+        if ((_currency == CurrencyPref.zmw && _selectedPreset == 0) ||
+            (_currency == CurrencyPref.usd && _selectedUsdPreset == 0))
           TextField(
             controller: _amountController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Amount (K)',
-              prefixIcon: Icon(LucideIcons.wallet),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: _currency == CurrencyPref.usd ? 'Amount (USD)' : 'Amount (K)',
+              prefixIcon: const Icon(LucideIcons.wallet),
+            ),
+          ),
+        if (_currency == CurrencyPref.usd && _usdRate > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Live rate: 1 USD = K${_usdRate.toStringAsFixed(2)} • payment is collected in ZMW',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11.5),
             ),
           ),
         const SizedBox(height: 20),
@@ -624,7 +722,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   Widget _buildFeeNote(BuildContext context, FeesInfo? fees) {
     final theme = Theme.of(context);
-    final fixed = fees?.platformFixedFeeCents ?? 24;
+    final fixed = fees?.platformFixedFeeCents ?? 48;
     final isCard = _method == _PaymentMethod.card;
     final paymentLine = isCard
         ? 'You will be redirected to a secure card checkout.'

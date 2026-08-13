@@ -12,7 +12,7 @@
   leftovers ship in a store build.
 - Current version name comes from `pubspec.yaml` (`version:`), current
   versionCode is in `android/app/build.gradle.kts`.
-- **Current version: 0.5.3 (versionCode 64)** — last built 2026-08-09.
+- **Current version: 0.7.0 (versionCode 75)** — last built 2026-08-13.
 - A "store build" (something to upload) requires a version code bump even if
   only assets/code changed.
 - Release build commands:
@@ -83,3 +83,15 @@
 - **Smart search + org grouping (0.5.3)** — Campaigns tab has an AppBar search icon → inline search bar that filters loaded campaigns instantly by title/description/host/category/org; backend `GET /api/campaigns/search?q=` for full coverage. `campaignPublic` returns `hostOrg` (host's `host_org`). Org name shown on cards (tap → opens search for that org); campaign detail shows a "More from {org}" section listing the community's other campaigns.
 - **FCM fix (0.5.3)** — `lib/firebase_options.dart` added with explicit `FirebaseOptions`; `Firebase.initializeApp(options:)` in `main()` and the background handler. Previously `Firebase.initializeApp()` was called with no options, so FCM tokens/pushes silently failed. Admin assistants screen: search now uses a proper controller + search button (mobile-friendly).
 - **Airtime toggle adherence (0.5.3)** — new shared `airtimeEnabledProvider` (FutureProvider) reads `/api/airtime/config`; home carousel watches it (hides the Buy Airtime slide the instant the admin disables it), the airtime screen blocks the buy form with "Airtime is not available right now" if disabled, and `_order()` fails fast when the toggle is off. Admin airtime config invalidates the provider on save so the toggle applies everywhere immediately.
+
+## 0.7.0 — events, assistants, updates, QA hardening (2026-08-13)
+
+- **Events as first-class** — dedicated `EventsScreen` (Instagram-style feed), `EventDetailScreen`, `BuyTicketScreen` (tier + qty, MoMo/card), RSVP for free events, QR check-in. Campaign detail auto-redirects event campaigns to the event screen; every "Buy ticket" CTA routes to the ticket screen (never the donate flow). Deep link `kingdomsponsor://event/<id>` (and `/buy-ticket`) added to the AndroidManifest + router.
+- **USD giving** — USD presets ($5/$10/$20/$50/$100) + custom field with decimal input, converted via the live FX rate (the old toggle left the amount area empty).
+- **Assistants actually work** — `/api/host/me` + verify-otp now return `assistantScopes`; `AuthState.isStaff`/`canScope()` gate the admin shield, routes and tiles by scope; ~50 admin endpoints converted from `requireAdmin` to `requireStaff(scope)`. Assistant-management + backup/restore stay superadmin-only. Admin dashboard shows a scopes banner for assistants.
+- **Host → donor updates (moderated)** — hosts post updates via their dashboard; submissions go to a moderation queue (`/admin/announcements`, `campaigns` scope); approved updates render on campaign/event pages ("Updates from the host") and push every confirmed donor. migration_v42.
+- **Notifications fixed** — `sendMulticastPush` bulk errors no longer return all tokens as failed, so a bad key/quota/network can't wipe `device_tokens` anymore (`bulkError`); `giving_updates` channel self-heals if an old build left it silent; legacy `users.fcm_token` pushes (new campaign/updated) switched to `device_tokens` + bell records. Settings has a "Test notification" button (`POST /api/user/push/test`).
+- **Payments QA** — `moneyRef()` (fees.ts) appends a random suffix to every money reference (`CON-`, `PAY-`, `REF-`, `PRO-`, `AIR-`, …) so same-ms collisions can't corrupt webhook idempotency; `confirmContribution` enforces event capacity atomically in the confirm UPDATE (a late ticket payment when the event just sold out is failed + host alerted, never oversold). Test suites: `src/__tests__/fees.test.ts`, `webhook-idempotency.test.ts` (backend, 35 tests) and `test/money_test.dart`, `test/fx_test.dart` (Flutter, 26 tests).
+- **K0.48 fixed fee** — platform flat fee is ZMW 0.48 (backend was already 48); all Flutter strings/fallbacks updated from 0.24.
+- **Restore list aligned** — deleted-campaigns items rebuilt as `Card + ListTile` (consistent icon/title/button alignment) in `admin_staff_screen.dart`.
+

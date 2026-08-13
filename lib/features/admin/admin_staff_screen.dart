@@ -228,6 +228,72 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
     searchController.dispose();
   }
 
+  Future<void> _editAssistant(Map<dynamic, dynamic> assistant) async {
+    final api = ref.read(apiClientProvider);
+    final userId = (assistant['userId'] as num?)?.toInt() ?? 0;
+    final name = assistant['username'] ?? 'Giver';
+    final scopes = Set<String>.from(assistant['permissions'] as List<dynamic>? ?? const []);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit assistant permissions'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Permissions for "$name".',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+                const SizedBox(height: 8),
+                for (final entry in kAssistantScopeLabels.entries)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(entry.value, style: const TextStyle(fontSize: 13)),
+                    value: scopes.contains(entry.key),
+                    onChanged: (v) => setDialogState(() {
+                      if (v == true) {
+                        scopes.add(entry.key);
+                      } else {
+                        scopes.remove(entry.key);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await api.updateAssistant(userId, scopes.toList());
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Permissions updated')),
+                    );
+                  }
+                  await _load();
+                } on ApiException catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.message)));
+                  }
+                }
+              },
+              child: const Text('Save changes'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _removeAssistant(int userId, String name) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -297,7 +363,7 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Staff & restore')),
+      appBar: AppBar(title: const Text('Staff & Restore')),
       body: _loading
           ? const Center(child: AppIconSpinner())
           : _error != null
@@ -362,49 +428,63 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
             for (final a in _assistants)
               Card(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(a['username'] ?? 'Giver',
-                                style: theme.textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w800)),
-                          ),
-                          IconButton(
-                            tooltip: 'Remove assistant',
-                            icon: const Icon(LucideIcons.userX, size: 18, color: AppColors.danger),
-                            onPressed: () => _removeAssistant(
-                              (a['userId'] as num?)?.toInt() ?? 0,
-                              a['username'] ?? 'Giver',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _editAssistant(a),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(a['username'] ?? 'Giver',
+                                  style: theme.textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800)),
                             ),
-                          ),
-                        ],
-                      ),
-                      Text(a['phone'] ?? '', style: theme.textTheme.bodySmall),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final p in (a['permissions'] as List<dynamic>? ?? []))
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                kAssistantScopeLabels[p] ?? p,
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                            IconButton(
+                              tooltip: 'Edit permissions',
+                              icon: const Icon(LucideIcons.pencil, size: 16),
+                              onPressed: () => _editAssistant(a),
+                            ),
+                            IconButton(
+                              tooltip: 'Remove assistant',
+                              icon: const Icon(LucideIcons.userX, size: 18, color: AppColors.danger),
+                              onPressed: () => _removeAssistant(
+                                (a['userId'] as num?)?.toInt() ?? 0,
+                                a['username'] ?? 'Giver',
                               ),
                             ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                        Text(a['phone'] ?? '', style: theme.textTheme.bodySmall),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final p in (a['permissions'] as List<dynamic>? ?? []))
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  kAssistantScopeLabels[p] ?? p,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap to edit permissions',
+                          style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -431,23 +511,62 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
                 ],
               ),
             )
-          else
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.archive, size: 15, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text('Deleted campaigns (${_deleted.length})',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
             for (final c in _deleted)
               Card(
                 margin: const EdgeInsets.only(bottom: 10),
+                clipBehavior: Clip.antiAlias,
                 child: ListTile(
-                  leading: const Icon(LucideIcons.archiveRestore, color: AppColors.primary),
-                  title: Text(c['title'] ?? '',
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text(c['hostName'] == null
-                      ? 'Deleted campaign'
-                      : 'Hosted by ${c['hostName']}'),
-                  trailing: OutlinedButton(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  leading: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(LucideIcons.archiveRestore, size: 20, color: AppColors.primary),
+                  ),
+                  title: Text(
+                    c['title'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        c['hostName'] != null ? 'Hosted by ${c['hostName']}' : 'Deleted campaign',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      ),
+                      Text(
+                        (c['createdAt'] as String? ?? '').replaceAll('T', ' '),
+                        style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                  trailing: TextButton.icon(
                     onPressed: () => _restoreCampaign(c),
-                    child: const Text('Restore'),
+                    icon: const Icon(LucideIcons.rotateCcw, size: 14),
+                    label: const Text('Restore'),
                   ),
                 ),
               ),
+          ],
         ],
       ),
     );
@@ -491,7 +610,10 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: Text(
-                  (a['createdAt'] as String? ?? '').replaceAll(' ', '\n').substring(0, 10),
+                  (() {
+                    final s = (a['createdAt'] as String? ?? '');
+                    return s.length >= 10 ? s.substring(0, 10) : s;
+                  })(),
                   style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
                 ),
               ),

@@ -68,7 +68,7 @@ class _AdminEditRequestsScreenState extends ConsumerState<AdminEditRequestsScree
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Campaign edit requests')),
+      appBar: AppBar(title: const Text('Campaign Edit Requests')),
       body: _loading
           ? const Center(child: AppIconSpinner())
           : _error != null

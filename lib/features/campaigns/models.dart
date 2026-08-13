@@ -36,6 +36,12 @@ const kCampaignCategories = [
   'Environmental & Conservation',
 ];
 
+/// Alphabetical category list for dropdowns ('Other' stays first).
+final List<String> kSortedCategories = [
+  'Other',
+  ...(kCampaignCategories.where((c) => c != 'Other').toList()..sort()),
+];
+
 /// Campaign market segments (kept in sync with backend `CAMPAIGN_TYPES`).
 const kCampaignTypes = <String, String>{
   'community': 'Community project',
@@ -77,6 +83,15 @@ class Campaign {
   final bool hostVerified;
   final String campaignType;
   final String? hostOrg;
+  final bool waivePayoutFees;
+  final List<EventTier> eventTiers;
+  final int eventCapacity;
+  final String? eventDate;
+  final String? eventVenue;
+  final int ticketsSold;
+  final int rsvpCount;
+  final bool isMine;
+  final bool isLive;
 
   const Campaign({
     required this.id,
@@ -109,30 +124,39 @@ class Campaign {
     this.hostVerified = false,
     this.campaignType = 'community',
     this.hostOrg,
+    this.waivePayoutFees = false,
+    this.eventTiers = const [],
+    this.eventCapacity = 0,
+    this.eventDate,
+    this.eventVenue,
+    this.ticketsSold = 0,
+    this.rsvpCount = 0,
+    this.isMine = false,
+    this.isLive = false,
   });
 
   factory Campaign.fromJson(Map<String, dynamic> j) => Campaign(
-    id: j['id'] as int,
-    slug: j['slug'] as String,
-    title: j['title'] as String,
+    id: (j['id'] is num) ? (j['id'] as num).toInt() : 0,
+    slug: j['slug'] as String? ?? '',
+    title: j['title'] as String? ?? '',
     description: j['description'] as String? ?? '',
     imageUrl: j['imageUrl'] as String?,
     logoUrl: j['logoUrl'] as String?,
-    goalCents: j['goalCents'] as int? ?? 0,
-    hasGoal: j['hasGoal'] as bool? ?? ((j['goalCents'] as int? ?? 0) > 0),
-    raisedCents: j['raisedCents'] as int? ?? 0,
-    withdrawnCents: j['withdrawnCents'] as int? ?? 0,
-    donorCount: j['donorCount'] as int? ?? 0,
-    donationCount: j['donationCount'] as int? ?? (j['donorCount'] as int? ?? 0),
-    avgDonationCents: j['avgDonationCents'] as int? ?? 0,
-    donorsNeededAtAvg: j['donorsNeededAtAvg'] as int?,
-    dailyRateCents: j['dailyRateCents'] as int? ?? 0,
+    goalCents: (j['goalCents'] is num) ? (j['goalCents'] as num).toInt() : 0,
+    hasGoal: j['hasGoal'] as bool? ?? ((j['goalCents'] is num && (j['goalCents'] as num) > 0)),
+    raisedCents: (j['raisedCents'] is num) ? (j['raisedCents'] as num).toInt() : 0,
+    withdrawnCents: (j['withdrawnCents'] is num) ? (j['withdrawnCents'] as num).toInt() : 0,
+    donorCount: (j['donorCount'] is num) ? (j['donorCount'] as num).toInt() : 0,
+    donationCount: (j['donationCount'] is num) ? (j['donationCount'] as num).toInt() : ((j['donorCount'] is num) ? (j['donorCount'] as num).toInt() : 0),
+    avgDonationCents: (j['avgDonationCents'] is num) ? (j['avgDonationCents'] as num).toInt() : 0,
+    donorsNeededAtAvg: (j['donorsNeededAtAvg'] is num) ? (j['donorsNeededAtAvg'] as num).toInt() : null,
+    dailyRateCents: (j['dailyRateCents'] is num) ? (j['dailyRateCents'] as num).toInt() : 0,
     estimatedEndDate: j['estimatedEndDate'] as String?,
     endsAt: j['endsAt'] as String?,
     status: j['status'] as String? ?? 'active',
-    availableCents: j['availableCents'] as int?,
-    minWithdrawCents: j['minWithdrawCents'] as int?,
-    promoted: j['promoted'] as bool? ?? false,
+    availableCents: (j['availableCents'] is num) ? (j['availableCents'] as num).toInt() : null,
+    minWithdrawCents: (j['minWithdrawCents'] is num) ? (j['minWithdrawCents'] as num).toInt() : null,
+    promoted: j['promoted'] == true,
     promotedUntil: j['promotedUntil'] as String?,
     createdAt: j['createdAt'] as String? ?? '',
     shareUrl: j['shareUrl'] as String?,
@@ -142,6 +166,17 @@ class Campaign {
     hostVerified: j['hostVerified'] == true,
     campaignType: j['campaignType'] as String? ?? 'community',
     hostOrg: j['hostOrg'] as String?,
+    waivePayoutFees: j['waivePayoutFees'] == true,
+    eventTiers: (j['eventTiers'] is List)
+        ? (j['eventTiers'] as List).whereType<Map>().map((t) => EventTier.fromJson(Map<String, dynamic>.from(t))).toList()
+        : const [],
+    eventCapacity: (j['eventCapacity'] is num) ? (j['eventCapacity'] as num).toInt() : 0,
+    eventDate: j['eventDate'] as String?,
+    eventVenue: j['eventVenue'] as String?,
+    ticketsSold: (j['ticketsSold'] is num) ? (j['ticketsSold'] as num).toInt() : 0,
+    rsvpCount: (j['rsvpCount'] is num) ? (j['rsvpCount'] as num).toInt() : 0,
+    isMine: j['isMine'] == true,
+    isLive: j['isLive'] == true,
   );
 
   double get progress =>
@@ -149,12 +184,31 @@ class Campaign {
 
   bool get isPrivate => visibility == 'private';
 
+  bool get isEvent => eventTiers.isNotEmpty;
+
+  bool get isSoldOut => eventCapacity > 0 && ticketsSold >= eventCapacity;
+
   String get raisedLabel => formatKwacha(raisedCents);
 
   String get goalLabel => formatKwacha(goalCents);
 
   String get availableLabel =>
       availableCents == null ? '' : formatKwacha(availableCents!);
+}
+
+/// A purchasable ticket tier for an event-style campaign.
+class EventTier {
+  final String name;
+  final int amountCents;
+
+  const EventTier({required this.name, required this.amountCents});
+
+  factory EventTier.fromJson(Map<String, dynamic> j) => EventTier(
+    name: j['name'] as String? ?? 'Ticket',
+    amountCents: (j['amountCents'] is num) ? (j['amountCents'] as num).toInt() : 0,
+  );
+
+  Map<String, dynamic> toJson() => {'name': name, 'amountCents': amountCents};
 }
 
 /// A donor's monthly "give again" reminder on a campaign.
@@ -413,7 +467,7 @@ class FeesInfo {
   factory FeesInfo.fromJson(Map<String, dynamic> j) => FeesInfo(
     platformPct: (j['platformPct'] as num? ?? 1).toDouble(),
     platformMinFeeCents: j['platformMinFeeCents'] as int? ?? 300,
-    platformFixedFeeCents: j['platformFixedFeeCents'] as int? ?? 24,
+    platformFixedFeeCents: j['platformFixedFeeCents'] as int? ?? 48,
     momoPct: (j['momoPct'] as num? ?? 2.5).toDouble(),
     totalPct: (j['totalPct'] as num? ?? 3.5).toDouble(),
     disbursementPct: (j['disbursementPct'] as num? ?? 1.5).toDouble(),
@@ -613,6 +667,10 @@ class AdminStats {
   final int totalProcessedCents;
   final int assistants;
   final int pendingEditRequests;
+  final int activeEvents;
+  final int ticketsSold;
+  final int ticketsSoldValueCents;
+  final int pendingAnnouncements;
 
   const AdminStats({
     required this.totalRaisedCents,
@@ -642,6 +700,10 @@ class AdminStats {
     this.totalProcessedCents = 0,
     this.assistants = 0,
     this.pendingEditRequests = 0,
+    this.activeEvents = 0,
+    this.ticketsSold = 0,
+    this.ticketsSoldValueCents = 0,
+    this.pendingAnnouncements = 0,
   });
 
   factory AdminStats.fromJson(Map<String, dynamic> j) => AdminStats(
@@ -672,6 +734,10 @@ class AdminStats {
     totalProcessedCents: j['totalProcessedCents'] as int? ?? 0,
     assistants: j['assistants'] as int? ?? 0,
     pendingEditRequests: j['pendingEditRequests'] as int? ?? 0,
+    activeEvents: j['activeEvents'] as int? ?? 0,
+    ticketsSold: j['ticketsSold'] as int? ?? 0,
+    ticketsSoldValueCents: j['ticketsSoldValueCents'] as int? ?? 0,
+    pendingAnnouncements: j['pendingAnnouncements'] as int? ?? 0,
   );
 }
 
@@ -868,6 +934,104 @@ class ReferralEntry {
   );
 }
 
+class RecentUser {
+  final int id;
+  final String phone;
+  final String username;
+  final String? name;
+  final String hostStatus;
+  final String createdAt;
+
+  const RecentUser({
+    required this.id,
+    required this.phone,
+    required this.username,
+    this.name,
+    required this.hostStatus,
+    required this.createdAt,
+  });
+
+  factory RecentUser.fromJson(Map<String, dynamic> j) => RecentUser(
+    id: j['id'] as int? ?? 0,
+    phone: j['phone'] as String? ?? '',
+    username: j['username'] as String? ?? 'Giver',
+    name: j['name'] as String?,
+    hostStatus: j['hostStatus'] as String? ?? 'none',
+    createdAt: j['createdAt'] as String? ?? '',
+  );
+
+  String get displayName => name ?? username;
+}
+
+/// A user row in the admin "All users" list (name, phone, giving, invites…).
+class AdminUser {
+  final int id;
+  final String phone;
+  final String username;
+  final String? name;
+  final String? avatarUrl;
+  final String hostStatus;
+  final String? hostOrg;
+  final String? orgType;
+  final String? lastLoginAt;
+  final String kycStatus;
+  final String? kycType;
+  final String? kycDocUrl;
+  final bool isHost;
+  final bool banned;
+  final String? banReason;
+  final String? referralRewardedAt;
+  final int givenCents;
+  final int invites;
+  final String createdAt;
+
+  const AdminUser({
+    required this.id,
+    required this.phone,
+    required this.username,
+    this.name,
+    this.avatarUrl,
+    required this.hostStatus,
+    this.hostOrg,
+    this.orgType,
+    this.lastLoginAt,
+    this.kycStatus = 'none',
+    this.kycType,
+    this.kycDocUrl,
+    required this.isHost,
+    required this.banned,
+    this.banReason,
+    this.referralRewardedAt,
+    required this.givenCents,
+    required this.invites,
+    required this.createdAt,
+  });
+
+  factory AdminUser.fromJson(Map<String, dynamic> j) => AdminUser(
+    id: j['id'] as int? ?? 0,
+    phone: j['phone'] as String? ?? '',
+    username: j['username'] as String? ?? 'Giver',
+    name: j['name'] as String?,
+    avatarUrl: j['avatarUrl'] as String?,
+    hostStatus: j['hostStatus'] as String? ?? 'none',
+    hostOrg: j['hostOrg'] as String?,
+    orgType: j['orgType'] as String?,
+    lastLoginAt: j['lastLoginAt'] as String?,
+    kycStatus: j['kycStatus'] as String? ?? 'none',
+    kycType: j['kycType'] as String?,
+    kycDocUrl: j['kycDocUrl'] as String?,
+    isHost: j['isHost'] as bool? ?? false,
+    banned: j['banned'] as bool? ?? false,
+    banReason: j['banReason'] as String?,
+    referralRewardedAt: j['referralRewardedAt'] as String?,
+    givenCents: j['givenCents'] as int? ?? 0,
+    invites: j['invites'] as int? ?? 0,
+    createdAt: j['createdAt'] as String? ?? '',
+  );
+
+  String get displayName => name ?? username;
+}
+
 class AdminData {
   final AdminStats stats;
   final List<HostApplication> applications;
@@ -875,6 +1039,7 @@ class AdminData {
   final List<LeaderboardEntry> topDonors;
   final List<ReferralEntry> topReferrers;
   final List<AdminRecent> recent;
+  final List<RecentUser> recentUsers;
   final List<Campaign> allCampaigns;
 
   const AdminData({
@@ -884,6 +1049,7 @@ class AdminData {
     required this.topDonors,
     required this.topReferrers,
     required this.recent,
+    required this.recentUsers,
     required this.allCampaigns,
   });
 
@@ -909,6 +1075,9 @@ class AdminData {
         .toList(),
     recent: (statsJson['recent'] as List<dynamic>? ?? [])
         .map((r) => AdminRecent.fromJson(r as Map<String, dynamic>))
+        .toList(),
+    recentUsers: (statsJson['recentUsers'] as List<dynamic>? ?? [])
+        .map((r) => RecentUser.fromJson(r as Map<String, dynamic>))
         .toList(),
     allCampaigns: (campaignsJson['campaigns'] as List<dynamic>? ?? [])
         .map((c) => Campaign.fromJson(c as Map<String, dynamic>))

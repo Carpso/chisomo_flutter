@@ -306,7 +306,6 @@ class BadgeAdminConfig extends ConsumerStatefulWidget {
 class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
   bool _enabled = false;
   Map<String, int> _prices = {'basic': 5000, 'pro': 15000, 'annual': 120000};
-  bool _saving = false;
 
   @override
   void initState() {
@@ -329,14 +328,117 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
     } catch (_) {}
   }
 
+  /// Edits all three tier prices (Basic / Pro / Annual) in one dialog.
+  Future<void> _editPrices() async {
+    final basicController =
+        TextEditingController(text: ((_prices['basic'] ?? 5000) / 100).toStringAsFixed(0));
+    final proController =
+        TextEditingController(text: ((_prices['pro'] ?? 15000) / 100).toStringAsFixed(0));
+    final annualController =
+        TextEditingController(text: ((_prices['annual'] ?? 120000) / 100).toStringAsFixed(0));
+    var saving = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Verified Host Badge pricing'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: basicController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Basic (30 days) (K)', prefixText: 'K '),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: proController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Pro (30 days) (K)', prefixText: 'K '),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: annualController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Annual Pro (365 days) (K)', prefixText: 'K '),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final basic = _parseK(basicController.text.trim());
+                      final pro = _parseK(proController.text.trim());
+                      final annual = _parseK(annualController.text.trim());
+                      if (basic == null || pro == null || annual == null) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Enter valid amounts in kwacha')),
+                        );
+                        return;
+                      }
+                      setDialogState(() => saving = true);
+                      try {
+                        await ref.read(apiClientProvider).put('/api/admin/host/badge-config', {
+                          'basicPriceCents': basic,
+                          'proPriceCents': pro,
+                          'annualPriceCents': annual,
+                        }, auth: true);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx, true);
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Badge pricing saved')),
+                          );
+                        }
+                        await _load();
+                      } on ApiException catch (e) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      } catch (_) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Could not save. Try again.')),
+                          );
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    basicController.dispose();
+    proController.dispose();
+    annualController.dispose();
+    if (ok == true) await _load();
+  }
+
+  /// Parses a whole-kwacha string into cents (e.g. "50" -> 5000).
+  static int? _parseK(String s) {
+    final n = double.tryParse(s.replaceAll(',', ''));
+    if (n == null || n <= 0) return null;
+    return (n * 100).round();
+  }
+
   Future<void> _save() async {
-    setState(() => _saving = true);
     try {
       await ref.read(apiClientProvider).put('/api/admin/host/badge-config', {
         'enabled': _enabled,
-        'basicPriceCents': _prices['basic'],
-        'proPriceCents': _prices['pro'],
-        'annualPriceCents': _prices['annual'],
       }, auth: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -347,8 +449,6 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -367,7 +467,10 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
                 const SizedBox(width: 8),
                 Text('Verified Host Badge', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
                 const Spacer(),
-                Switch(value: _enabled, onChanged: (v) => setState(() => _enabled = v)),
+                Switch(value: _enabled, onChanged: (v) {
+                  setState(() => _enabled = v);
+                  _save();
+                }),
               ],
             ),
             const SizedBox(height: 8),
@@ -381,10 +484,13 @@ class _BadgeAdminConfigState extends ConsumerState<BadgeAdminConfig> {
               ],
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.save, size: 16),
-              label: Text(_saving ? 'Saving…' : 'Save Settings'),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: _editPrices,
+                icon: const Icon(LucideIcons.pencil, size: 14),
+                label: const Text('Edit prices'),
+              ),
             ),
           ],
         ),

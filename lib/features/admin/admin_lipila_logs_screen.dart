@@ -54,7 +54,7 @@ class _LipilaLogsScreenState extends ConsumerState<LipilaLogsScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lipila logs'),
+        title: const Text('Lipila Logs'),
         actions: [
           IconButton(icon: const Icon(LucideIcons.refreshCw), onPressed: _load),
         ],

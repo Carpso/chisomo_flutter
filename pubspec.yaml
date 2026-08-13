@@ -1,7 +1,7 @@
 name: kingdom_sponsor_app
 description: "Kingdom Sponsor - neutral fundraising platform app."
 publish_to: 'none'
-version: 0.5.3
+version: 0.7.0
 
 environment:
   sdk: ^3.9.0
@@ -23,6 +23,7 @@ dependencies:
   open_file: ^3.5.10
   path_provider: ^2.1.5
   qr_flutter: ^4.1.0
+  mobile_scanner: ^7.0.0
   image_picker: ^1.2.2
   http_parser: ^4.1.2
   firebase_core: ^3.13.0
@@ -76,6 +77,7 @@ flutter:
     - assets/campaign_samples/cat_food_water.png
     - assets/campaign_samples/cat_disaster.png
     - assets/campaign_samples/cat_environment.png
+    - assets/event_samples/
     - assets/campaign_samples/cat_church_ministry_real.jpg
     - assets/campaign_samples/cat_missions_real.jpg
     - assets/campaign_samples/cat_worship_music_real.jpg

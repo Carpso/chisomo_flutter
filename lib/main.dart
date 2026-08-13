@@ -4,17 +4,30 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'core/push_service.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'core/widgets/app_widgets.dart';
+import 'core/fx_service.dart';
+import 'core/l10n.dart';
 import 'features/campaigns/campaigns_controller.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Report any uncaught Flutter/zone errors to Sentry so production crashes
+  // are never silent.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    Sentry.captureException(details.exception, stackTrace: details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    Sentry.captureException(error, stackTrace: stack);
+    return true;
+  };
   await dotenv.load();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initPushService();
@@ -24,7 +37,21 @@ Future<void> main() async {
       options.tracesSampleRate = 0.2;
       options.environment = kReleaseMode ? 'production' : 'development';
     },
-    appRunner: () => runApp(const ProviderScope(child: KingdomSponsorApp())),
+    appRunner: () async {
+      // Restore persisted preferences before the first frame so the chosen
+      // language and currency survive restarts (they are also used at build).
+      final lang = await LanguageController.load();
+      final currency = await CurrencyController.load();
+      runApp(
+        ProviderScope(
+          overrides: [
+            languageProvider.overrideWith(() => LanguageController(lang)),
+            currencyPrefProvider.overrideWith(() => CurrencyController(currency)),
+          ],
+          child: const KingdomSponsorApp(),
+        ),
+      );
+    },
   );
 }
 
@@ -105,14 +132,70 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       builder: (context, child) {
-        return Column(
-          children: [
-            if (isTestMode) const TestModeBanner(),
-            Expanded(child: child ?? const SizedBox.shrink()),
-          ],
+        // Never show a blank white screen on a build error — render a friendly
+        // fallback with a retry instead (older/slower phones can hit this).
+        ErrorWidget.builder = (details) => _FriendlyErrorWidget(details: details);
+        // Clamp system text scaling so very large accessibility fonts don't
+        // overflow the app's dense layouts (keeps content readable + intact).
+        final media = MediaQuery.of(context);
+        final clamped = media.copyWith(
+          textScaler: media.textScaler.clamp(maxScaleFactor: 1.3),
+        );
+        return MediaQuery(
+          data: clamped,
+          child: Column(
+            children: [
+              if (isTestMode) const TestModeBanner(),
+              Expanded(child: child ?? const SizedBox.shrink()),
+            ],
+          ),
         );
       },
       routerConfig: router,
+    );
+  }
+}
+
+class _FriendlyErrorWidget extends StatelessWidget {
+  final FlutterErrorDetails details;
+
+  const _FriendlyErrorWidget({required this.details});
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.surface,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(LucideIcons.alertTriangle, size: 40, color: AppColors.textMuted),
+              const SizedBox(height: 12),
+              const Text(
+                'Something went wrong rendering this screen.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Pull to refresh or restart the app. If it keeps happening, tell us via Settings → Support.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textMuted, height: 1.4),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                details.exceptionAsString().split('\n').first,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

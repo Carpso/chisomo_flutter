@@ -35,6 +35,91 @@ class ApiClient {
   /// Long, public, QR/WhatsApp-friendly share page for a campaign.
   String shareUrl(int campaignId) => '$_baseUrl/share/$campaignId';
 
+  /// Records that the signed-in user opened a campaign, so a PRIVATE campaign
+  /// reached via a shared invite link stays findable under "Recently opened".
+  Future<Map<String, dynamic>> recordCampaignView(int campaignId) {
+    return post('/api/campaigns/$campaignId/view', {}, auth: true);
+  }
+
+  /// Recently-opened campaigns for the signed-in user (incl. private ones they
+  /// reached via a shared link).
+  Future<List<dynamic>> getCampaignViews() async {
+    final res = await get('/api/me/campaign-views', auth: true);
+    return res['campaigns'] as List<dynamic>? ?? [];
+  }
+
+  /// In-app notifications history (donations, tickets, milestones, admin…).
+  Future<List<dynamic>> getNotifications() async {
+    final res = await get('/api/me/notifications', auth: true);
+    return res['notifications'] as List<dynamic>? ?? [];
+  }
+
+  Future<int> getUnreadNotificationCount() async {
+    final res = await get('/api/me/notifications/unread-count', auth: true);
+    return (res['unread'] as int?) ?? 0;
+  }
+
+  Future<void> markNotificationRead(int id) {
+    return post('/api/me/notifications/$id/read', {}, auth: true);
+  }
+
+  Future<void> markAllNotificationsRead() {
+    return post('/api/me/notifications/read-all', {}, auth: true);
+  }
+
+  /// Admin analytics for charts (donations over time, conversion, top events).
+  Future<Map<String, dynamic>> getAdminAnalytics() {
+    return get('/api/admin/analytics', auth: true);
+  }
+
+  /// Per-campaign analytics for a host (views, conversion, share clicks).
+  Future<Map<String, dynamic>> getCampaignAnalytics(int campaignId) {
+    return get('/api/campaigns/$campaignId/analytics', auth: true);
+  }
+
+  /// Global search across campaigns + (admin) users/tickets/transactions.
+  Future<Map<String, dynamic>> globalSearch(String q) {
+    return get('/api/search?q=${Uri.encodeQueryComponent(q)}');
+  }
+
+  /// Admin bulk SMS groups available for group broadcasts.
+  Future<Map<String, dynamic>> getSmsGroups() {
+    return get('/api/admin/sms/groups', auth: true);
+  }
+
+  /// Admin: send an SMS to every user in a filtered group.
+  Future<Map<String, dynamic>> sendGroupSms(String group, String message) {
+    return post('/api/admin/sms/group', {
+      'group': group,
+      'message': message,
+    }, auth: true);
+  }
+
+  /// Team chat: fetch recent messages.
+  Future<List<dynamic>> getTeamMessages() async {
+    final res = await get('/api/team/messages', auth: true);
+    return res['messages'] as List<dynamic>? ?? [];
+  }
+
+  /// Team chat: post a text message (optionally with an image URL).
+  Future<void> sendTeamMessage(String body, {String? imageUrl}) {
+    return post('/api/team/messages', {
+      'body': body,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+    }, auth: true);
+  }
+
+  /// Team chat: upload an image attachment (returns media URL).
+  Future<String> uploadTeamImage(List<int> bytes, String filename) async {
+    final req =
+        http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/team/upload'))
+          ..headers['Authorization'] = 'Bearer $token'
+          ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final res = await _send(() => req.send().then((s) => http.Response.fromStream(s)));
+    final data = _decode(res);
+    return data['url'] as String? ?? '';
+  }
+
   /// Short, public-friendly share page (uses the self-hosted shortener).
   /// Prefer [Campaign.shareUrl] when available — it comes back from the API as
   /// an already-shortened link. This is a client-side fallback: it points at
@@ -45,8 +130,60 @@ class ApiClient {
   /// Deep link that opens this campaign directly in the installed app.
   String deepLink(int campaignId) => 'kingdomsponsor://campaign/$campaignId';
 
+  /// Deep link that opens an event's detail screen in the installed app.
+  String eventDeepLink(int campaignId) => 'kingdomsponsor://event/$campaignId';
+
+  /// Deep link that opens an event's ticket-buying screen in the installed app.
+  String eventTicketDeepLink(int campaignId) => 'kingdomsponsor://event/$campaignId/buy-ticket';
+
   /// Deep link that opens the donate flow for this campaign in the app.
   String donateDeepLink(int campaignId) => 'kingdomsponsor://donate/$campaignId';
+
+  /// Buys event tickets: picks a tier + quantity and pays (MoMo prompt or card).
+  Future<Map<String, dynamic>> buyTickets(
+    int campaignId, {
+    required String tierName,
+    required int ticketQty,
+    required int amountCents,
+    required String phone,
+    String? donorName,
+    bool anonymous = false,
+    bool hideAmount = false,
+  }) {
+    return post('/api/campaigns/$campaignId/contribute', {
+      'amountCents': amountCents,
+      'tierName': tierName,
+      'ticketQty': ticketQty,
+      'phone': phone,
+      'donorName': donorName,
+      'isAnonymous': anonymous,
+      'hideAmount': hideAmount,
+    });
+  }
+
+  /// RSVP to a free event ("I'm going").
+  Future<Map<String, dynamic>> rsvpEvent(int eventId, {String? name, String? phone}) {
+    return post('/api/events/$eventId/rsvp', {
+      if (name != null && name.isNotEmpty) 'name': name,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+    });
+  }
+
+  /// Public RSVP count for an event.
+  Future<int> getRsvpCount(int eventId) async {
+    final res = await get('/api/events/$eventId/rsvp-count');
+    return (res['rsvpCount'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Admin: dedicated events analytics (tickets, revenue, sell-through).
+  Future<Map<String, dynamic>> getAdminEventsStats() {
+    return get('/api/admin/events/stats', auth: true);
+  }
+
+  /// Send a test push to the logged-in user's own devices (Settings → Test notification).
+  Future<Map<String, dynamic>> sendMyTestPush() {
+    return post('/api/user/push/test', {}, auth: true);
+  }
 
   /// Play Store page for people who do not have the app installed.
   static const playStoreUrl =
@@ -161,17 +298,34 @@ class ApiClient {
     return res['enabled'] == true;
   }
 
-  /// Lists host announcements for a campaign (public).
+  /// Lists host announcements for a campaign (public, approved only).
   Future<List<dynamic>> getAnnouncements(int campaignId) async {
     final res = await get('/api/campaigns/$campaignId/announcements');
     return res['announcements'] as List<dynamic>? ?? [];
   }
 
-  /// Posts a host announcement to a campaign.
+  /// Posts a host update. Host submissions go to the moderation queue; admin
+  /// posts publish instantly.
   Future<Map<String, dynamic>> postAnnouncement(int campaignId, String body) {
     return post('/api/campaigns/$campaignId/announcements', {
       'body': body,
     }, auth: true);
+  }
+
+  /// Admin: list announcements for moderation (default: pending).
+  Future<List<dynamic>> getAdminAnnouncements({String status = 'pending'}) async {
+    final res = await get('/api/admin/announcements?status=$status', auth: true);
+    return res['announcements'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: approve a pending host update (publishes + notifies donors).
+  Future<Map<String, dynamic>> approveAnnouncement(int id) {
+    return post('/api/admin/announcements/$id/approve', {}, auth: true);
+  }
+
+  /// Admin: reject a pending host update with a reason sent to the host.
+  Future<Map<String, dynamic>> rejectAnnouncement(int id, {String reason = ''}) {
+    return post('/api/admin/announcements/$id/reject', {'reason': reason}, auth: true);
   }
 
   /// Sets up (or updates) a monthly reminder pledge on a campaign.
@@ -345,11 +499,12 @@ class ApiClient {
     return get('/api/admin/promotion-config', auth: true);
   }
 
-  /// Admin: set the promotion price (cents) and duration (days).
-  Future<Map<String, dynamic>> setPromotionConfig(int priceCents, int days) {
+  /// Admin: set the promotion price (cents), duration (days) and slot count.
+  Future<Map<String, dynamic>> setPromotionConfig(int priceCents, int days, {int? slots}) {
     return post('/api/admin/promotion-config', {
       'priceCents': priceCents,
       'days': days,
+      if (slots != null) 'slots': slots,
     }, auth: true);
   }
 
@@ -555,6 +710,134 @@ class ApiClient {
     return get('/api/networks/status');
   }
 
+  /// Public: admin-set SMS announcement + per-network health for the sign-in
+  /// screen, so users can be told about outages without burning SMS credits.
+  Future<Map<String, dynamic>> getSmsNotice() async {
+    return get('/api/sms/notice');
+  }
+
+  /// Admin: send an SMS to any number (in-app or out-of-app).
+  Future<Map<String, dynamic>> sendAdminSms(String phones, String message) {
+    return post('/api/admin/sms/send', {
+      'phone': phones,
+      'message': message,
+    }, auth: true);
+  }
+
+  /// Admin: recent SMS delivery activity (AT callbacks + admin broadcasts).
+  Future<List<dynamic>> getSmsActivity() async {
+    final res = await get('/api/admin/sms/activity', auth: true);
+    return res['events'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: airtime orders list for diagnosing stuck purchases.
+  Future<List<dynamic>> getAirtimeOrders() async {
+    final res = await get('/api/admin/airtime-orders', auth: true);
+    return res['orders'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: retry a failed/stuck airtime order.
+  Future<Map<String, dynamic>> retryAirtimeOrder(int orderId) {
+    return post('/api/admin/airtime-orders/$orderId/retry', {}, auth: true);
+  }
+
+  /// Admin: refund a failed airtime order's cost to the buyer.
+  Future<Map<String, dynamic>> refundAirtimeOrder(int orderId) {
+    return post('/api/admin/airtime-orders/$orderId/refund', {}, auth: true);
+  }
+
+  /// Admin: edit an approved/pending host's application details.
+  Future<Map<String, dynamic>> updateHostApplication(int userId, {String? org, String? role, String? reason, String? orgType}) {
+    return put('/api/admin/hosts/$userId/application', {
+      if (org != null) 'org': org,
+      if (role != null) 'role': role,
+      if (reason != null) 'reason': reason,
+      if (orgType != null) 'orgType': orgType,
+    }, auth: true);
+  }
+
+  /// Admin: test the configured Telegram team bots.
+  Future<Map<String, dynamic>> testTelegramBots() {
+    return post('/api/admin/telegram-config/test', {}, auth: true);
+  }
+
+  /// My gamification achievements + stats.
+  Future<Map<String, dynamic>> getMyAchievements() {
+    return get('/api/me/achievements', auth: true);
+  }
+
+  /// Host/admin: check an attendee in to an event by phone.
+  Future<Map<String, dynamic>> checkInAttendee(int eventId, String phone) {
+    return post('/api/events/$eventId/check-in', {'phone': phone}, auth: true);
+  }
+
+  /// Host/admin: attendees checked in to an event.
+  Future<Map<String, dynamic>> getEventAttendees(int eventId) {
+    return get('/api/events/$eventId/attendees', auth: true);
+  }
+
+  /// Live session status for a campaign/event.
+  Future<bool> getLiveStatus(int id) async {
+    final res = await get('/api/campaigns/$id/live');
+    return res['live'] == true;
+  }
+
+  Future<Map<String, dynamic>> setLive(int id, bool live) {
+    return post('/api/campaigns/$id/live', {'live': live}, auth: true);
+  }
+
+  /// Latest confirmed donations for the live donor feed.
+  Future<List<dynamic>> getLiveDonations(int id) async {
+    final res = await get('/api/campaigns/$id/live/donations');
+    return res['donations'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin push broadcast groups.
+  Future<Map<String, dynamic>> getPushGroups() {
+    return get('/api/admin/push/groups', auth: true);
+  }
+
+  /// Admin: send a broadcast push to all/hosts/donors.
+  Future<Map<String, dynamic>> sendPushBroadcast(String group, String title, String message) {
+    return post('/api/admin/push/broadcast', {
+      'group': group,
+      'title': title,
+      'message': message,
+    }, auth: true);
+  }
+
+  /// Team chat room name.
+  Future<String> getTeamRoomName() async {
+    final res = await get('/api/admin/team/room', auth: true);
+    return res['name'] as String? ?? 'Team Chat';
+  }
+
+  Future<Map<String, dynamic>> renameTeamRoom(String name) {
+    return post('/api/admin/team/room', {'name': name}, auth: true);
+  }
+
+  /// Admin: email the weekly report immediately.
+  Future<Map<String, dynamic>> sendWeeklyReport() {
+    return post('/api/admin/report/send', {}, auth: true);
+  }
+
+  /// Admin: tax & compliance dashboard.
+  Future<Map<String, dynamic>> getTaxDashboard() {
+    return get('/api/admin/tax', auth: true);
+  }
+
+  /// Admin: update tax settings (rate %, due day, TPIN).
+  Future<Map<String, dynamic>> saveTaxSettings({double? ratePct, int? dueDay, String? tin}) {
+    return post('/api/admin/tax', {
+      if (ratePct != null) 'ratePct': ratePct,
+      if (dueDay != null) 'dueDay': dueDay,
+      if (tin != null) 'tin': tin,
+    }, auth: true);
+  }
+
+  /// Admin: tax invoice PDF download URL for a month.
+  String taxInvoiceUrl(String month) => '$_baseUrl/api/admin/tax/invoice?month=$month';
+
   /// Admin: set per-network SMS health.
   Future<Map<String, dynamic>> setNetworkStatus(Map<String, String> statuses) {
     return put('/api/admin/network-status', {'statuses': statuses}, auth: true);
@@ -651,6 +934,17 @@ class ApiClient {
     return get('/api/admin/users/search?q=${Uri.encodeQueryComponent(q)}', auth: true);
   }
 
+  /// Admin: list all users by name/phone with giving + invite details.
+  Future<Map<String, dynamic>> getAdminUsers({
+    String q = '',
+    int limit = 200,
+    int offset = 0,
+  }) {
+    final query = <String>['limit=$limit', 'offset=$offset'];
+    if (q.trim().isNotEmpty) query.add('q=${Uri.encodeQueryComponent(q.trim())}');
+    return get('/api/admin/users?${query.join('&')}', auth: true);
+  }
+
   /// Admin: add or update an assistant's permission scopes.
   Future<Map<String, dynamic>> saveAssistant(
     int userId, {
@@ -701,11 +995,6 @@ class ApiClient {
     return res['payouts'] as List<dynamic>? ?? [];
   }
 
-  /// Admin: approve a host payout request.
-  Future<Map<String, dynamic>> approvePayoutRequest(int payoutId) {
-    return post('/api/admin/payout-requests/$payoutId/approve', {}, auth: true);
-  }
-
   /// Admin: approve or reject a host's KYC submission.
   Future<Map<String, dynamic>> decideKyc(
     int userId, {
@@ -743,22 +1032,6 @@ class ApiClient {
   /// Admin: reject a host's campaign-edit request.
   Future<Map<String, dynamic>> rejectEditRequest(int id, {String notes = ''}) {
     return post('/api/admin/edit-requests/$id/reject', {'notes': notes}, auth: true);
-  }
-
-  /// Admin: reject a host payout request.
-  Future<Map<String, dynamic>> rejectPayoutRequest(int payoutId, {String? reason}) {
-    return post('/api/admin/payout-requests/$payoutId/reject',
-        reason != null ? {'reason': reason} : {}, auth: true);
-  }
-
-  /// Admin: block a campaign from receiving payouts.
-  Future<Map<String, dynamic>> blockPayout(int campaignId) {
-    return post('/api/admin/campaigns/$campaignId/block-payout', {}, auth: true);
-  }
-
-  /// Admin: unblock a campaign's payouts.
-  Future<Map<String, dynamic>> unblockPayout(int campaignId) {
-    return post('/api/admin/campaigns/$campaignId/unblock-payout', {}, auth: true);
   }
 
   /// Admin: paginated contribution ledger.

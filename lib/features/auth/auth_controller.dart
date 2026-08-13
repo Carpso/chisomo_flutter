@@ -15,6 +15,7 @@ class AuthState {
   final String? avatarUrl;
   final bool isHost;
   final bool isAdmin;
+  final Set<String> assistantScopes;
   final String hostStatus;
   final bool signedOut;
 
@@ -26,11 +27,20 @@ class AuthState {
     this.avatarUrl,
     this.isHost = false,
     this.isAdmin = false,
+    this.assistantScopes = const {},
     this.hostStatus = 'none',
     this.signedOut = false,
   });
 
   bool get loggedIn => token != null;
+
+  /// True when this account can reach the admin dashboard: a superadmin, or an
+  /// assistant with at least one permission scope.
+  bool get isStaff => isAdmin || assistantScopes.isNotEmpty;
+
+  /// True when this account holds the given permission scope (superadmins
+  /// always pass, matching the backend's requireStaff).
+  bool canScope(String scope) => isAdmin || assistantScopes.contains(scope);
 
   AuthState copyWith({String? username, String? name, String? avatarUrl, bool? signedOut}) => AuthState(
         token: token,
@@ -40,6 +50,7 @@ class AuthState {
         avatarUrl: avatarUrl ?? this.avatarUrl,
         isHost: isHost,
         isAdmin: isAdmin,
+        assistantScopes: assistantScopes,
         hostStatus: hostStatus,
         signedOut: signedOut ?? this.signedOut,
       );
@@ -84,6 +95,9 @@ class AuthController extends AsyncNotifier<AuthState> {
       avatarUrl: user['avatarUrl'] as String?,
       isHost: user['isHost'] == true,
       isAdmin: user['isAdmin'] == true,
+      assistantScopes: (user['assistantScopes'] as List<dynamic>? ?? const [])
+          .map((s) => s.toString())
+          .toSet(),
       hostStatus: user['hostStatus'] as String? ?? 'none',
     );
   }
@@ -127,6 +141,9 @@ class AuthController extends AsyncNotifier<AuthState> {
         avatarUrl: res['user']?['avatarUrl'] as String?,
         isHost: res['user']?['isHost'] == true,
         isAdmin: res['user']?['isAdmin'] == true,
+        assistantScopes: (res['user']?['assistantScopes'] as List<dynamic>? ?? const [])
+            .map((s) => s.toString())
+            .toSet(),
         hostStatus: res['user']?['hostStatus'] as String? ?? 'none',
       ));
       _resetData();

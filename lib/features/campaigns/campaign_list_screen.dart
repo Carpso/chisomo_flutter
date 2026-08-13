@@ -5,6 +5,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/offline_cache.dart';
+import '../../core/fx_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/home_carousel.dart';
@@ -36,7 +37,7 @@ class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
     final campaigns = ref.watch(campaignsProvider);
     final offline = ref.watch(offlineModeProvider);
     final auth = ref.watch(authControllerProvider).value;
-    final isAdmin = auth?.isAdmin ?? false;
+    final isStaff = auth?.isStaff ?? false;
     final isApprovedHost = auth?.hostStatus == 'approved';
 
     // Smart local filter over the already-loaded campaigns.
@@ -61,19 +62,47 @@ class _CampaignListScreenState extends ConsumerState<CampaignListScreen> {
           child: Text('Kingdom Sponsor', maxLines: 1),
         ),
         actions: [
-          if (isAdmin)
+          if (isStaff)
             IconButton(
               icon: const Icon(LucideIcons.shieldCheck),
               tooltip: 'Admin dashboard',
               onPressed: () => context.push('/admin'),
             ),
+          Consumer(
+            builder: (context, ref, _) {
+              final unread = ref.watch(unreadNotificationsProvider);
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(LucideIcons.bell),
+                    tooltip: 'Notifications',
+                    onPressed: () => context.push('/notifications'),
+                  ),
+                  if ((unread.value ?? 0) > 0)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${unread.value}',
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
           IconButton(
-            icon: Icon(_searching ? LucideIcons.x : LucideIcons.search),
-            tooltip: _searching ? 'Close search' : 'Search campaigns',
-            onPressed: () => setState(() {
-              _searching = !_searching;
-              if (!_searching) _searchController.clear();
-            }),
+            icon: const Icon(LucideIcons.search),
+            tooltip: 'Global search',
+            onPressed: () => context.push('/search'),
           ),
         ],
       ),
@@ -98,9 +127,12 @@ body: campaigns.when(
                         ].join(' ').toLowerCase();
                         return hay.contains(qq);
                       }).toList();
-                final filtered = _category == 'All'
-                    ? searched
-                    : searched.where((c) => c.category == _category).toList();
+                final filtered = (_category == 'All'
+                        ? searched
+                        : searched.where((c) => c.category == _category).toList())
+                    // Event campaigns live in the Events tab, not here.
+                    .where((c) => !c.isEvent && c.campaignType != 'event')
+                    .toList();
                 return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(campaignsProvider),
                 child: CustomScrollView(
@@ -282,13 +314,13 @@ class _CategoryChip extends StatelessWidget {
         onSelected: (_) => onTap(),
         selectedColor: AppColors.primary,
         labelStyle: TextStyle(
-          color: selected ? Colors.white : AppColors.textMuted,
+          color: selected ? Colors.white : AppColors.textDark,
           fontSize: 12.5,
           fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
         ),
-        backgroundColor: const Color(0xFF151521),
+        backgroundColor: const Color(0xFFE8EDE8),
         side: BorderSide(
-          color: selected ? AppColors.primary : const Color(0xFF2A2A3A),
+          color: selected ? AppColors.primary : const Color(0xFFD4DBD4),
         ),
         showCheckmark: false,
         visualDensity: VisualDensity.compact,
@@ -297,7 +329,8 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-class _CampaignCard extends StatelessWidget {
+
+class _CampaignCard extends ConsumerWidget {
   final Campaign campaign;
   final bool isTrending;
   final VoidCallback? onOrgTap;
@@ -305,9 +338,10 @@ class _CampaignCard extends StatelessWidget {
   const _CampaignCard({required this.campaign, this.isTrending = false, this.onOrgTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final accent = AppColors.accentFor(campaign.id);
+    final usdRate = ref.watch(zmwPerUsdProvider).value;
     return Card(
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -322,213 +356,276 @@ class _CampaignCard extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () => context.push('/campaign/${campaign.id}'),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Big cover image fills the top of the card (with the icon as a
+            // fallback when the campaign has no photo).
+            SizedBox(
+              height: 170,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                  Hero(
+                    tag: 'campaign-image-${campaign.id}',
                     child: CampaignImage(campaign: campaign, fit: BoxFit.cover),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                  // Scrim so badges/text on top stay readable.
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.05),
+                          Colors.black.withValues(alpha: 0.5),
+                        ],
+                        stops: const [0.4, 1.0],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 10,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (isTrending)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.gold.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(LucideIcons.flame, size: 12, color: AppColors.gold),
-                                  SizedBox(width: 3),
-                                   Text('Trending',
-                                       textAlign: TextAlign.center,
-                                       style: TextStyle(
-                                           fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.gold)),
-                                ],
-                              ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.gold,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.flame, size: 12, color: Colors.black87),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Trending',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-Text(
-                      campaign.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    if (campaign.hostName != null && campaign.hostName!.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'Hosted by ${campaign.hostName}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textMuted, fontSize: 11),
-                            ),
-                          ),
-                          if (campaign.hostVerified) ...[
-                            const SizedBox(width: 4),
-                            const Icon(LucideIcons.badgeCheck,
-                                size: 12, color: AppColors.primary),
-                          ],
-                        ],
-                      ),
-                    ],
-                    if (campaign.hostOrg != null && campaign.hostOrg!.isNotEmpty) ...[
-                      const SizedBox(height: 1),
-                      InkWell(
-                        onTap: onOrgTap,
-                        child: Row(
+                        if (isTrending) const SizedBox(height: 6),
+                        Row(
                           children: [
-                            Icon(LucideIcons.building2, size: 11, color: AppColors.primary),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                '${campaign.hostOrg}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                    color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w700),
+                            if (campaign.promoted) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gold.withValues(alpha: 0.95),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.star, size: 11, color: Colors.black87),
+                                    SizedBox(width: 3),
+                                    Text('Promoted',
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.black87)),
+                                  ],
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (campaign.isPrivate) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.lock, size: 11, color: Colors.white),
+                                    SizedBox(width: 3),
+                                    Text('Private',
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white)),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
                           ],
                         ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        if (campaign.promoted)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: AppColors.gold.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(LucideIcons.star, size: 10, color: AppColors.gold),
-                                  SizedBox(width: 2),
-                                  Text('Promoted',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.gold)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        if (campaign.isPrivate)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: AppColors.textMuted.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(LucideIcons.lock, size: 10, color: AppColors.textMuted),
-                                  SizedBox(width: 2),
-                                  Text('Private',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.textMuted)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        Text(
-                          campaign.donorCount == 0
-                              ? 'Be the first to give'
-                              : '${campaign.donorCount} ${campaign.donorCount == 1 ? 'donor' : 'donors'}',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: AppColors.textMuted),
-                        ),                      ],
-                    ),
                       ],
                     ),
                   ),
-                  if (campaign.hasGoal)
-                    Text(
-                      '${(campaign.progress * 100).round()}%',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: accent,
-                      ),
-                    )
-                  else
-                    Text(
-                      campaign.raisedLabel,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: accent,
-                      ),
-                    ),
                 ],
               ),
-              if (campaign.hasGoal) ...[
-                const SizedBox(height: 14),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: campaign.progress,
-                    minHeight: 8,
-                    backgroundColor: const Color(0xFFE8EDE8),
-                    color: accent,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      campaign.raisedLabel,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textDark,
-                      ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    campaign.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
                     ),
-                    Text(
-                      'of ${campaign.goalLabel}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                  ),
+                  if (campaign.hostName != null && campaign.hostName!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Hosted by ${campaign.hostName}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.textMuted, fontSize: 12),
+                          ),
+                        ),
+                        if (campaign.hostVerified) ...[
+                          const SizedBox(width: 4),
+                          const Icon(LucideIcons.badgeCheck,
+                              size: 13, color: AppColors.primary),
+                        ],
+                      ],
                     ),
                   ],
-                ),
-              ],
-            ],
-          ),
+                  if (campaign.hostOrg != null && campaign.hostOrg!.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    InkWell(
+                      onTap: onOrgTap,
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.building2, size: 12, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              '${campaign.hostOrg}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        campaign.donorCount == 0
+                            ? 'Be the first to give'
+                            : '${campaign.donorCount} ${campaign.donorCount == 1 ? 'donor' : 'donors'}',
+                        style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                      ),
+                      if (campaign.hasGoal)
+                        Text(
+                          '${(campaign.progress * 100).round()}%',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: accent,
+                          ),
+                        )
+                      else
+                        Text(
+                          campaign.raisedLabel,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: accent,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (campaign.hasGoal) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: campaign.progress,
+                        minHeight: 8,
+                        backgroundColor: const Color(0xFFE8EDE8),
+                        color: accent,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          campaign.raisedLabel,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        Text(
+                          'of ${campaign.goalLabel}',
+                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      'With your support we will reach our Target',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                  if (usdRate != null && usdRate > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '≈ \$${(campaign.raisedCents / 100 / usdRate).toStringAsFixed(2)} USD',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10.5, color: AppColors.textMuted),
+                      ),
+                    ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Tap to view campaign',
+                        style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(LucideIcons.chevronRight, size: 14, color: AppColors.textMuted),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

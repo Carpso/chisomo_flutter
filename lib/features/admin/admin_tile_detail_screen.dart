@@ -49,7 +49,7 @@ class _AdminTileDetailScreenState extends ConsumerState<AdminTileDetailScreen> {
   List<dynamic> _items = [];
   bool _loading = true;
   String? _error;
-  int _threshold = 5;
+  int _threshold = 10;
   final Set<int> _busy = {};
 
   @override
@@ -69,7 +69,7 @@ class _AdminTileDetailScreenState extends ConsumerState<AdminTileDetailScreen> {
         final res = await api.getAdminReferrals();
         if (mounted) {
           setState(() {
-            _threshold = res['threshold'] as int? ?? 5;
+            _threshold = res['threshold'] as int? ?? 10;
             _items = res['referrers'] as List<dynamic>? ?? [];
           });
         }
@@ -110,6 +110,91 @@ class _AdminTileDetailScreenState extends ConsumerState<AdminTileDetailScreen> {
     } finally {
       if (mounted) setState(() => _busy.remove(id));
     }
+  }
+
+  /// Lets the admin set how many sign-ups qualify a referrer for a reward.
+  Future<void> _editThreshold() async {
+    final controller = TextEditingController(text: '$_threshold');
+    var saving = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Referral reward target'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'A user qualifies for the admin reward once this many invited sign-ups register.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Invites needed',
+                    prefixIcon: Icon(LucideIcons.userPlus, size: 18),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final n = int.tryParse(controller.text.trim());
+                      if (n == null || n < 1 || n > 1000) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Enter a number between 1 and 1000')),
+                        );
+                        return;
+                      }
+                      setDialogState(() => saving = true);
+                      try {
+                        final res = await ref
+                            .read(apiClientProvider)
+                            .put('/api/admin/referral-threshold', {'threshold': n}, auth: true);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx, true);
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(content: Text('Reward target set to $n invites')),
+                          );
+                        }
+                        if (mounted) setState(() => _threshold = res['threshold'] as int? ?? n);
+                      } on ApiException catch (e) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.message)));
+                        }
+                      } catch (_) {
+                        setDialogState(() => saving = false);
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Could not save. Try again.')),
+                          );
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (ok == true) await _load();
   }
 
   /// Mark an approved host as independently verified (with private notes).
@@ -273,6 +358,28 @@ class _AdminTileDetailScreenState extends ConsumerState<AdminTileDetailScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            if (widget.kind == AdminTileKind.referrals)
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.target, size: 16, color: AppColors.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Reward target: $_threshold invited sign-ups',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      TextButton(onPressed: _editThreshold, child: const Text('Change')),
+                    ],
+                  ),
+                ),
+              ),
             if (widget.kind == AdminTileKind.users)
               Card(
                 child: Padding(

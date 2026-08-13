@@ -10,6 +10,7 @@ import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
+import '../auth/auth_controller.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
 
@@ -95,8 +96,9 @@ const kSampleImageForCategory = <String, String>{
 
 class CreateCampaignScreen extends ConsumerStatefulWidget {
   final int? campaignId;
+  final bool presetEvent;
 
-  const CreateCampaignScreen({super.key, this.campaignId});
+  const CreateCampaignScreen({super.key, this.campaignId, this.presetEvent = false});
 
   @override
   ConsumerState<CreateCampaignScreen> createState() => _CreateCampaignScreenState();
@@ -123,10 +125,19 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
   String _category = 'Other';
   String _campaignType = 'community';
   bool _isPrivate = false;
+  bool _waivePayoutFees = false;
+  bool _isEvent = false;
+  final List<({String name, int amountCents})> _eventTiers = [];
+  int _eventCapacity = 0;
+  DateTime? _eventDate;
+  final _eventVenueController = TextEditingController();
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
+    _isAdmin = ref.read(authControllerProvider).value?.isAdmin ?? false;
+    if (widget.presetEvent) _isEvent = true;
     if (widget.campaignId != null) {
       _editing = true;
       _loadCampaign(widget.campaignId!);
@@ -155,6 +166,21 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
             ? c['campaignType'] as String
             : 'community';
         _isPrivate = (c['visibility'] as String? ?? 'public') == 'private';
+        _waivePayoutFees = c['waivePayoutFees'] == true;
+        _eventCapacity = c['eventCapacity'] as int? ?? 0;
+        _eventDate = c['eventDate'] != null ? DateTime.tryParse(c['eventDate'] as String) : null;
+        _eventVenueController.text = c['eventVenue'] as String? ?? '';
+        final tiers = c['eventTiers'] as List<dynamic>? ?? [];
+        _isEvent = tiers.isNotEmpty;
+        _eventTiers
+          ..clear()
+          ..addAll([
+            for (final t in tiers)
+              (
+                name: (t as Map)['name'] as String? ?? 'Ticket',
+                amountCents: (t['amountCents'] as int? ?? 0),
+              ),
+          ]);
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -169,6 +195,7 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
     _descriptionController.dispose();
     _goalController.dispose();
     _minWithdrawController.dispose();
+    _eventVenueController.dispose();
     super.dispose();
   }
 
@@ -233,6 +260,17 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
         'category': _category,
         'campaignType': _campaignType,
         'visibility': _isPrivate ? 'private' : 'public',
+        'waivePayoutFees': _waivePayoutFees,
+        if (_isEvent && _eventTiers.isNotEmpty)
+          'eventTiers': [
+            for (final t in _eventTiers)
+              {'name': t.name, 'amountCents': t.amountCents},
+          ],
+        if (_isEvent) 'eventCapacity': _eventCapacity,
+        if (_isEvent && _eventDate != null)
+          'eventDate': _eventDate!.toIso8601String().split('T')[0],
+        if (_isEvent && _eventVenueController.text.trim().isNotEmpty)
+          'eventVenue': _eventVenueController.text.trim(),
         if (_endsAt != null) 'endsAt': _endsAt!.toIso8601String().split('T')[0],
       };
 
@@ -273,6 +311,15 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
               endsAt: _endsAt,
               category: _category,
               campaignType: _campaignType,
+              isPrivate: _isPrivate,
+              waivePayoutFees: _waivePayoutFees,
+              eventTiers: [
+                for (final t in _eventTiers)
+                  {'name': t.name, 'amountCents': t.amountCents},
+              ],
+              eventCapacity: _eventCapacity,
+              eventDate: _eventDate?.toIso8601String().split('T')[0],
+              eventVenue: _eventVenueController.text.trim(),
             );
         final campaignId = res['id'] as int?;
         if (campaignId != null && _logo != null) {
@@ -308,8 +355,81 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
     }
   }
 
-  Future<void> _pickDeadline() async {
+  /// Adds a ticket tier to an event campaign (name + price in kwacha).
+  Future<void> _addTier() async {
+    final nameController = TextEditingController();
+    final amountController = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add ticket tier'),
+        content: SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Tier name',
+                  hintText: 'e.g. Standard, VIP, Table of 10',
+                  prefixIcon: Icon(LucideIcons.tag, size: 18),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Price (K) per ticket',
+                  prefixIcon: Icon(LucideIcons.banknote, size: 18),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              final k = double.tryParse(amountController.text.trim()) ?? 0;
+              if (name.isEmpty || k <= 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Enter a tier name and a valid price')),
+                );
+                return;
+              }
+              setState(() => _eventTiers.add((name: name, amountCents: (k * 100).round())));
+              Navigator.pop(ctx);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    amountController.dispose();
+  }
+
+    /// Picks the event date (optional).
+  Future<void> _pickEventDate() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _eventDate ?? today.add(const Duration(days: 30)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365 * 2)),
+      helpText: 'Event date',
+    );
+    if (picked != null) setState(() => _eventDate = picked);
+  }
+
+  Future<void> _pickDeadline() async {    final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final first = today.add(const Duration(days: 1));
     final last = today.add(const Duration(days: 365 * 2));
@@ -337,7 +457,7 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(title: Text(_editing ? 'Edit campaign' : 'New campaign')),
+      appBar: AppBar(title: Text(_editing ? (_isEvent ? 'Edit event' : 'Edit campaign') : (_isEvent ? 'New event' : 'New campaign'))),
       body: ListView(
         padding: EdgeInsets.all(16).copyWith(
           bottom: 16 + MediaQuery.viewInsetsOf(context).bottom,
@@ -361,7 +481,7 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
               isExpanded: true,
               underline: const SizedBox.shrink(),
               items: [
-                for (final c in kCampaignCategories)
+                for (final c in kSortedCategories)
                   DropdownMenuItem(value: c, child: Text(c)),
               ],
               onChanged: (v) {
@@ -545,8 +665,8 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
               labelText: 'Minimum payout (K)',
               helperText:
                   'Funds are sent to your mobile money automatically once your available balance reaches this amount (default K5). '
-                  'On payout, Lipila charges 1.5% and Kingdom Sponsor charges K0.24 + 1% (min K3). '
-                  'Example: a K100 payout delivers K95.26 to your phone.',
+                  'On payout, Lipila charges 1.5% and Kingdom Sponsor charges K0.48 + 1% (min K3). '
+                  'Example: a K100 payout delivers K94.52 to your phone.',
               helperMaxLines: 4,
             ),
           ),
@@ -566,6 +686,167 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
                   : 'Deadline: ${_endsAt!.toLocal().toString().split(' ')[0]} (tap to change)',
             ),
           ),
+          const SizedBox(height: 12),
+          if (_isAdmin)
+            Card(
+              margin: EdgeInsets.zero,
+              child: SwitchListTile(
+                value: _waivePayoutFees,
+              onChanged: (v) => setState(() => _waivePayoutFees = v),
+              title: const Text('Waive payout fees',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              subtitle: Text(
+                _waivePayoutFees
+                    ? 'The full balance is sent on payout — no platform cut, no Lipila disbursement fee deducted.'
+                    : 'Payouts deduct the platform cut (K0.48 + 1%, min K3) and Lipila\'s 1.5% disbursement fee.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+              secondary: Icon(
+                _waivePayoutFees ? LucideIcons.hand : LucideIcons.percent,
+                size: 20,
+                color: AppColors.primary,
+              ),
+              activeTrackColor: AppColors.primary.withValues(alpha: 0.4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: SwitchListTile(
+              value: _isEvent,
+              onChanged: (v) => setState(() => _isEvent = v),
+              title: const Text('Event with ticket tiers',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              subtitle: Text(
+                _isEvent
+                    ? 'Donors pick a ticket tier instead of a free amount (e.g. Standard K200 / VIP K500).'
+                    : 'Turn on to sell tiered tickets for an event, conference or function.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+              ),
+              secondary: Icon(
+                _isEvent ? LucideIcons.ticket : LucideIcons.calendar,
+                size: 20,
+                color: AppColors.primary,
+              ),
+              activeTrackColor: AppColors.primary.withValues(alpha: 0.4),
+            ),
+          ),
+          if (_isEvent) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(LucideIcons.ticket, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'Ticket tiers (${_eventTiers.length}/10)',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: _eventTiers.length >= 10 ? null : _addTier,
+                  icon: const Icon(LucideIcons.plus, size: 14),
+                  label: const Text('Add tier'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (int i = 0; i < _eventTiers.length; i++) ...[
+              Card(
+                margin: EdgeInsets.zero,
+                child: ListTile(
+                  dense: true,
+                  leading: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text('${i + 1}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    ),
+                  ),
+                  title: Text(_eventTiers[i].name,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  subtitle: Text('${_kwachaText(_eventTiers[i].amountCents)} per ticket'),
+                  trailing: IconButton(
+                    tooltip: 'Remove tier',
+                    icon: const Icon(LucideIcons.x, size: 18, color: AppColors.danger),
+                    onPressed: () => setState(() => _eventTiers.removeAt(i)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+            if (_eventTiers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Add at least one tier so donors can buy tickets (max 10).',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                ),
+              ),
+            const SizedBox(height: 4),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'Event campaigns let donors buy a ticket tier instead of entering a free amount. '
+                'Each tier has a name and a fixed price in kwacha.',
+                style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Total tickets (0 = unlimited)',
+                      isDense: true,
+                    ),
+                    initialValue: _eventCapacity > 0 ? '$_eventCapacity' : '',
+                    onChanged: (v) => _eventCapacity = int.tryParse(v) ?? 0,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: _pickEventDate,
+                    icon: Icon(
+                      _eventDate == null ? LucideIcons.calendarDays : LucideIcons.calendarCheck,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _eventDate == null
+                          ? 'Event date'
+                          : _eventDate!.toLocal().toString().split(' ')[0],
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _eventVenueController,
+              decoration: const InputDecoration(
+                labelText: 'Venue',
+                hintText: 'e.g. Mulungushi Conference Centre, Lusaka',
+                prefixIcon: Icon(LucideIcons.mapPin, size: 18),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: AppColors.danger)),
@@ -590,7 +871,9 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
                     width: 22, height: 22,
                     child: AppIconSpinner(size: 22, color: Colors.white),
                   )
-                : Text(_editing ? 'Update campaign' : 'Create campaign'),
+                : Text(_editing
+                    ? (_isEvent ? 'Update event' : 'Update campaign')
+                    : (_isEvent ? 'Create event' : 'Create campaign')),
           ),
         ],
       ),

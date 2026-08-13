@@ -25,7 +25,7 @@ android {
         applicationId = "com.kingdomsponsor.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 64
+        versionCode = 75
         versionName = flutter.versionName
     }
 

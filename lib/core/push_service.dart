@@ -44,6 +44,26 @@ final FlutterLocalNotificationsPlugin _localNotifications =
 
 bool _wired = false;
 
+/// Shared high-priority Android notification details: heads-up banner, sound,
+/// vibration and wake (matches the `giving_updates` channel created at startup).
+NotificationDetails _notifDetails() => const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'giving_updates',
+        'Giving updates',
+        channelDescription:
+            'Donation confirmations, receipts, pledges and campaign news',
+        importance: Importance.max,
+        priority: Priority.high,
+        color: Color(0xFFE65100),
+        icon: '@mipmap/ic_notification',
+        autoCancel: true,
+        playSound: true,
+        enableVibration: true,
+        category: AndroidNotificationCategory.message,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
 /// Background message handler (must be a top-level function). FCM shows
 /// `notification`-type messages itself when the app is in the background, so
 /// here we only mirror data-only messages as local notifications (Android
@@ -58,22 +78,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         id: DateTime.now().millisecondsSinceEpoch % 100000,
         title: message.data['title'] ?? 'Kingdom Sponsor',
         body: message.data['body'] ?? '',
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'giving_updates',
-            'Giving updates',
-            channelDescription:
-                'Donation confirmations, receipts, pledges and campaign news',
-            importance: Importance.high,
-            priority: Priority.high,
-            color: Color(0xFFE65100),
-            icon: '@mipmap/ic_notification',
-            autoCancel: true,
-            playSound: true,
-            enableVibration: true,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
+        notificationDetails: _notifDetails(),
         payload: _routeFromData(message.data),
       );
     }
@@ -101,16 +106,39 @@ Future<void> initPushService() async {
   // Set background message handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // Create notification channel with high importance
+  // Create notification channel with max importance (heads-up banner + sound +
+  // vibration + wake) so alerts are never silent.
   const androidChannel = AndroidNotificationChannel(
     'giving_updates',
     'Giving updates',
     description: 'Donation confirmations, receipts, pledges and campaign news',
-    importance: Importance.high,
+    importance: Importance.max,
     playSound: true,
     enableVibration: true,
   );
-  await _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(androidChannel);
+  final androidImpl = _localNotifications
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  await androidImpl?.createNotificationChannel(androidChannel);
+
+  // Self-heal: Android never raises an existing channel's importance, so if an
+  // older build created "giving_updates" at a low/important level, banners stay
+  // silent forever even after an update. Detect a low-importance channel and
+  // delete + recreate it so heads-up banners, sound and vibration actually work.
+  try {
+    final channels = await androidImpl?.getNotificationChannels();
+    if (channels != null) {
+      for (final c in channels) {
+        if (c.id == 'giving_updates' && c.importance.index < Importance.max.index) {
+          developer.log('giving_updates channel at low importance (${c.importance}) — recreating', name: 'PushService');
+          await androidImpl?.deleteNotificationChannel(channelId: 'giving_updates');
+          await androidImpl?.createNotificationChannel(androidChannel);
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    developer.log('channel importance check failed: $e', name: 'PushService');
+  }
 
   // Try to register token (will skip if no session yet)
   await _registerCurrentToken();
@@ -151,7 +179,8 @@ void _open(Map<String, dynamic> data) {
 }
 
 /// Requests the notification permission. On Android this prompts for the
-/// POST_NOTIFICATIONS runtime permission (Android 13+).
+/// POST_NOTIFICATIONS runtime permission (Android 13+). Returns true when the
+/// user can receive notifications (granted or limited).
 Future<bool> _ensurePermission() async {
   // Check if already granted
   var status = await Permission.notification.status;
@@ -161,11 +190,22 @@ Future<bool> _ensurePermission() async {
   status = await Permission.notification.request();
   if (status.isGranted || status.isLimited) return true;
 
-  // If permanently denied, we can't prompt again — user must go to settings
+  // If permanently denied, we can't prompt again — the user must enable it in
+  // system settings. We surface this through openAppSettings() (the caller
+  // decides whether to show the settings screen).
   if (status.isPermanentlyDenied) {
     developer.log('Notification permission permanently denied — user must enable in settings', name: 'PushService');
   }
   return false;
+}
+
+/// Best-effort attempt to open the app's system settings screen (so a user who
+/// permanently denied notifications can re-enable them).
+Future<bool> requestNotificationsViaSettings() async {
+  final ok = await _ensurePermission();
+  if (ok) return true;
+  // Try opening the OS notification settings so the user can flip it on.
+  return openAppSettings();
 }
 
 Future<void> _registerCurrentToken() async {
@@ -243,6 +283,13 @@ String? _routeFromData(Map<String, dynamic> data) {
       return '/airtime';
     case 'badge_activated':
       return '/host/badge';
+    case 'new_user':
+      return '/admin';
+    case 'link_request':
+      final linkId = data['linkId'];
+      return (linkId != null && linkId.toString().isNotEmpty)
+          ? '/settings/links/$linkId/accept'
+          : '/settings';
     default:
       return null;
   }
@@ -254,22 +301,7 @@ void _showLocal(RemoteNotification? n, Map<String, dynamic> data) {
     id: DateTime.now().millisecondsSinceEpoch % 100000,
     title: n?.title ?? 'Kingdom Sponsor',
     body: n?.body ?? '',
-    notificationDetails: const NotificationDetails(
-      android: AndroidNotificationDetails(
-        'giving_updates',
-        'Giving updates',
-        channelDescription:
-            'Donation confirmations, receipts, pledges and campaign news',
-        importance: Importance.high,
-        priority: Priority.high,
-        color: Color(0xFFE65100),
-        icon: '@mipmap/ic_notification',
-        autoCancel: true,
-        playSound: true,
-        enableVibration: true,
-      ),
-      iOS: DarwinNotificationDetails(),
-    ),
+    notificationDetails: _notifDetails(),
     payload: route,
   );
 }

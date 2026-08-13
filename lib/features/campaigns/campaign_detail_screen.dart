@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
-import '../../core/api_client.dart';
-import '../../core/date_utils.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -12,8 +10,11 @@ import '../../core/widgets/app_widgets.dart';
 import '../../core/widgets/avatar.dart';
 import '../../core/widgets/info_badge.dart';
 import '../auth/auth_controller.dart';
+import '../events/event_detail_screen.dart';
+import 'announcements_section.dart';
 import 'campaigns_controller.dart';
 import 'campaign_image.dart';
+import 'live_overlay.dart';
 import 'models.dart';
 import 'share_sheet.dart';
 
@@ -25,6 +26,14 @@ class CampaignDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(campaignDetailProvider(campaignId));
+
+    // Events are their own first-class flow: if this id happens to resolve to
+    // an event campaign, hand off to the event detail screen so users never
+    // see campaign/donate UI for an event.
+    final campaign = detail.value?.campaign;
+    if (campaign != null && campaign.isEvent) {
+      return EventDetailScreen(eventId: campaignId);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -78,6 +87,15 @@ class CampaignDetailScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Best-effort: admins always see the live toggle; hosts see it when the
+/// campaign's host name matches their account username.
+bool _isHostOrAdmin(WidgetRef ref, Campaign c) {
+  final auth = ref.read(authControllerProvider).value;
+  if (auth?.isAdmin == true) return true;
+  final u = auth?.username;
+  return u != null && u.isNotEmpty && u == c.hostName;
 }
 
 class _InsightRow extends StatelessWidget {
@@ -167,28 +185,42 @@ class _DetailBody extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
               // Cover photos fill the banner edge-to-edge; logos stay centered.
-              Container(
-                height: 200,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryLight],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: c.imageUrl != null
-                    ? SizedBox.expand(
-                        child: CampaignImage(campaign: c, fit: BoxFit.cover),
-                      )
-                    : Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: CampaignImage(campaign: c, fit: BoxFit.contain),
-                        ),
+              Stack(
+                children: [
+                  Container(
+                    height: 200,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppColors.primary, AppColors.primaryLight],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Hero(
+                      tag: 'campaign-image-${c.id}',
+                      child: c.imageUrl != null
+                          ? SizedBox.expand(
+                              child: CampaignImage(campaign: c, fit: BoxFit.cover),
+                            )
+                          : Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: CampaignImage(campaign: c, fit: BoxFit.contain),
+                              ),
+                            ),
+                    ),
+                  ),
+                  if (c.isLive)
+                    const Positioned(
+                      left: 10,
+                      top: 10,
+                      child: LiveBadge(),
+                    ),
+                ],
               ),
+              if (c.isLive) LiveDonorFeed(campaignId: c.id) else const SizedBox.shrink(),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -220,6 +252,25 @@ class _DetailBody extends ConsumerWidget {
                     ),
                 ],
               ),
+              if (_isHostOrAdmin(ref, c))
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: LiveToggleButton(campaignId: c.id, currentlyLive: c.isLive),
+                      ),
+                      const SizedBox(width: 8),
+                      InfoBadge(
+                        title: 'Go live',
+                        text: 'Go live starts a live donor feed on this page and shows a '
+                            '"LIVE" badge. Only the host or an admin can turn it on. While live, '
+                            'new donations appear on the screen in real time. Tap "End live" '
+                            'anytime to stop it.',
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 8),
               if (c.hostName != null && c.hostName!.isNotEmpty)
                 Padding(
@@ -496,7 +547,7 @@ class _DetailBody extends ConsumerWidget {
                 ),
               ],
               const SizedBox(height: 20),
-              _AnnouncementsSection(campaignId: c.id),
+              AnnouncementsSection(campaignId: c.id),
               const SizedBox(height: 20),
               if (c.hostOrg != null && c.hostOrg!.isNotEmpty)
                 _MoreFromOrgSection(campaign: c),
@@ -603,14 +654,26 @@ class _DetailBody extends ConsumerWidget {
                             ),
                           ),
                         )
-                      : ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          onPressed: () => context.push('/donate/${c.id}'),
-                          icon: const Icon(LucideIcons.heartHandshake),
-                          label: const Text('Donate Now'),
-                        ),
+                      : c.isEvent
+                          ? ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                backgroundColor: AppColors.primary,
+                              ),
+                              onPressed: c.isSoldOut
+                                  ? null
+                                  : () => context.push('/event/${c.id}/buy-ticket'),
+                              icon: const Icon(LucideIcons.ticket),
+                              label: Text(c.isSoldOut ? 'Sold out' : 'Buy ticket'),
+                            )
+                          : ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () => context.push('/donate/${c.id}'),
+                              icon: const Icon(LucideIcons.heartHandshake),
+                              label: const Text('Donate Now'),
+                            ),
                 ),
               ],
             ),
@@ -689,88 +752,3 @@ class _MoreFromOrgSection extends ConsumerWidget {
   }
 }
 
-class _AnnouncementsSection extends ConsumerStatefulWidget {
-  final int campaignId;
-
-  const _AnnouncementsSection({required this.campaignId});
-
-  @override
-  ConsumerState<_AnnouncementsSection> createState() => _AnnouncementsSectionState();
-}
-
-class _AnnouncementsSectionState extends ConsumerState<_AnnouncementsSection> {
-  late Future<List<dynamic>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = ref.read(apiClientProvider).getAnnouncements(widget.campaignId);
-  }
-
-  void _retry() {
-    setState(() {
-      _future = ref.read(apiClientProvider).getAnnouncements(widget.campaignId);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return FutureBuilder<List<dynamic>>(
-      future: _future,
-      builder: (context, snapshot) {
-        final items = snapshot.data ?? const [];
-        if (snapshot.connectionState == ConnectionState.waiting && items.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        if (snapshot.hasError && items.isEmpty) {
-          return Row(
-            children: [
-              const Icon(LucideIcons.megaphone, size: 18, color: AppColors.textMuted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Could not load updates from the host.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textMuted,
-                  ),
-                ),
-              ),
-              TextButton(onPressed: _retry, child: const Text('Retry')),
-            ],
-          );
-        }
-        if (snapshot.hasData && items.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Updates from the host',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              child: Column(
-                children: [
-                  for (final a in items)
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(LucideIcons.megaphone, size: 20, color: AppColors.primary),
-                      title: Text(
-                        a['body'] as String? ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        '${a['author'] ?? 'Host'} · ${safeDate(a['createdAt'])}',
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}

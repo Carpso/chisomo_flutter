@@ -89,6 +89,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.initState();
     _checkStoredSession();
     _loadNetworkStatus();
+    _loadSmsNotice();
     final deepLinkCode = ref.read(referralCodeProvider);
     if (deepLinkCode != null && deepLinkCode.isNotEmpty) {
       _referralController.text = deepLinkCode;
@@ -106,6 +107,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {
       // Offline/failure: banner just won't show; backend still blocks OTP itself.
     }
+  }
+
+  /// Fetches the admin's SMS announcement and pops it once (post-frame) so
+  /// users are told about outages instead of the app burning SMS credits.
+  Future<void> _loadSmsNotice() async {
+    String? notice;
+    try {
+      final res = await ref.read(apiClientProvider).getSmsNotice();
+      if (!mounted) return;
+      final text = (res['text'] as String? ?? '').trim();
+      if (text.isNotEmpty) notice = text;
+    } catch (_) {
+      return;
+    }
+    if (!mounted || notice == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || notice == null) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(LucideIcons.info, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text('Notice'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Text(notice!),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   Future<void> _checkStoredSession() async {

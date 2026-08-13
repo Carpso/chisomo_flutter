@@ -6,6 +6,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/api_client.dart';
+import '../../core/fx_service.dart';
+import '../../core/l10n.dart';
+import '../../core/push_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../../core/widgets/avatar.dart';
@@ -39,6 +42,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   bool _busy = false;
   bool _linksBusy = false;
+  bool _testing = false;
   bool _notificationsEnabled = true;
   String? _error;
   List<dynamic> _links = [];
@@ -68,6 +72,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _setNotifications(bool enabled) async {
     setState(() => _busy = true);
     try {
+      if (enabled) {
+        // Turning push ON also requests the Android 13+ POST_NOTIFICATIONS
+        // runtime permission (and re-registers the FCM token) so notifications
+        // actually start flowing.
+        await ensurePushRegistered();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Push notifications enabled')),
+          );
+        }
+      }
       await ref.read(apiClientProvider).setNotificationsEnabled(enabled);
       if (mounted) setState(() => _notificationsEnabled = enabled);
     } catch (_) {
@@ -78,6 +93,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _testNotification() async {
+    setState(() => _testing = true);
+    try {
+      // Make sure the permission is granted + the FCM token re-registered,
+      // then ask the backend to push a test to this device.
+      await ensurePushRegistered();
+      final res = await ref.read(apiClientProvider).sendMyTestPush();
+      if (!mounted) return;
+      final err = res['error'] as String?;
+      final msg = res['message'] as String?;
+      if (err != null && res['ok'] == false) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg ?? 'Test push sent — check your notification shade.')),
+        );
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send the test push. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
     }
   }
 
@@ -423,29 +470,138 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  leading: const Icon(LucideIcons.bell, color: AppColors.primary, size: 20),
+                  title: const Text('Push notifications',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Donation confirmations, new donors, updates',
+                      style: TextStyle(fontSize: 11)),
+                  trailing: Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: _notificationsEnabled,
+                      onChanged: _busy ? null : (v) => _setNotifications(v),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  leading: const Icon(LucideIcons.radio, color: AppColors.primary, size: 20),
+                  title: const Text('Test notification',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  subtitle: const Text('Send a test push to this phone',
+                      style: TextStyle(fontSize: 11)),
+                  trailing: _testing ? const SizedBox(width: 18, height: 18, child: AppIconSpinner(size: 18)) : const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textMuted),
+                  onTap: _testing ? null : _testNotification,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              leading: const Icon(LucideIcons.bell, color: AppColors.primary),
-              title: const Text('Push notifications'),
-              subtitle: const Text('Donation confirmations, new donors, campaign updates'),
-              trailing: Switch(
-                value: _notificationsEnabled,
-                onChanged: _busy ? null : (v) => _setNotifications(v),
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: const Icon(LucideIcons.slidersHorizontal, color: AppColors.primary, size: 20),
+              title: const Text('Auto-slide carousel',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Rotate the home carousel on its own',
+                  style: TextStyle(fontSize: 11)),
+              trailing: Transform.scale(
+                scale: 0.8,
+                child: Switch(
+                  value: carouselAuto,
+                  onChanged: (v) =>
+                      ref.read(carouselAutoSlideProvider.notifier).set(v),
+                ),
               ),
             ),
           ),
           const SizedBox(height: 8),
           Card(
+            margin: EdgeInsets.zero,
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              leading: const Icon(LucideIcons.slidersHorizontal, color: AppColors.primary),
-              title: const Text('Auto-slide carousel'),
-              subtitle: const Text('Let the home carousel rotate through campaigns on its own'),
-              trailing: Switch(
-                value: carouselAuto,
-                onChanged: (v) =>
-                    ref.read(carouselAutoSlideProvider.notifier).set(v),
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: const Icon(LucideIcons.globe, color: AppColors.primary, size: 20),
+              title: const Text('Language',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              subtitle: const Text('English · Chinyanja · Chibemba · Chitonga',
+                  style: TextStyle(fontSize: 11)),
+              trailing: DropdownButton<AppLang>(
+                value: ref.watch(languageProvider),
+                underline: const SizedBox.shrink(),
+                items: [
+                  for (final l in AppLang.values)
+                    DropdownMenuItem(value: l, child: Text(l.label)),
+                ],
+                onChanged: (v) {
+                  if (v != null) ref.read(languageProvider.notifier).set(v);
+                },
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: const Icon(LucideIcons.banknote, color: AppColors.primary, size: 20),
+              title: const Text('Currency',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Zambian Kwacha (K) or US Dollar (\$) at live rates',
+                  style: TextStyle(fontSize: 11)),
+              trailing: DropdownButton<CurrencyPref>(
+                value: ref.watch(currencyPrefProvider),
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: CurrencyPref.zmw, child: Text('ZMW (K)')),
+                  DropdownMenuItem(value: CurrencyPref.usd, child: Text('USD (\$)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) ref.read(currencyPrefProvider.notifier).set(v);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: const Icon(LucideIcons.qrCode, color: AppColors.primary, size: 20),
+              title: const Text('My QR Code',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Show to staff to confirm your profile',
+                  style: TextStyle(fontSize: 11)),
+              trailing: const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textMuted),
+              onTap: () => context.push('/my-qr'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              leading: const Icon(LucideIcons.trophy, color: AppColors.gold, size: 20),
+              title: const Text('Achievements',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Your badges, level and giving progress',
+                  style: TextStyle(fontSize: 11)),
+              trailing: const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textMuted),
+              onTap: () => context.push('/achievements'),
             ),
           ),
           const SizedBox(height: 24),

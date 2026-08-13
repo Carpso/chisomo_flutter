@@ -443,6 +443,9 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
   int _bonus = 5;
   bool _saving = false;
   bool _testing = false;
+  List<dynamic> _orders = [];
+  bool _loadingOrders = false;
+  final Set<int> _busy = {};
 
   @override
   void initState() {
@@ -463,6 +466,22 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() => _loadingOrders = true);
+    try {
+      final orders = await ref.read(apiClientProvider).getAirtimeOrders();
+      if (mounted) setState(() => _orders = orders);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load airtime orders.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingOrders = false);
+    }
   }
 
   Future<void> _save() async {
@@ -488,6 +507,87 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _retryOrder(int id) async {
+    setState(() => _busy.add(id));
+    try {
+      final res = await ref.read(apiClientProvider).retryAirtimeOrder(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['error'] == null
+              ? 'Order #$id retried (status: ${res['status']})'
+              : 'Retry failed: ${res['error']}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      setState(() => _busy.remove(id));
+      await _loadOrders();
+    }
+  }
+
+  Future<void> _refundOrder(int id) async {
+    final confirm = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Refund this airtime order?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'The order cost is sent back to the buyer\'s mobile money. '
+                'This cannot be undone. Type REFUND to confirm.',
+                style: TextStyle(height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirm,
+                decoration: const InputDecoration(
+                  labelText: 'Type REFUND',
+                  isDense: true,
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+              onPressed: confirm.text.trim().toUpperCase() == 'REFUND'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: const Text('Refund'),
+            ),
+          ],
+        ),
+      ),
+    );
+    confirm.dispose();
+    if (ok != true) return;
+    setState(() => _busy.add(id));
+    try {
+      final res = await ref.read(apiClientProvider).refundAirtimeOrder(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] as String? ?? 'Refund initiated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      setState(() => _busy.remove(id));
+      await _loadOrders();
     }
   }
 
@@ -586,7 +686,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
             const SizedBox(height: 8),
             Text(_enabled ? 'Enabled — users can buy airtime' : 'Disabled — shows "Coming Soon"', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
             const SizedBox(height: 12),
-            Text('Markup: $_markup%', style: theme.textTheme.bodySmall),
+            Text('Markup: $_markup% (added on top of the airtime value)', style: theme.textTheme.bodySmall),
             Slider(value: _markup.toDouble(), min: 0, max: 20, divisions: 20, label: '$_markup%', onChanged: (v) => setState(() => _markup = v.round())),
             const SizedBox(height: 8),
             Text('Bonus reward: $_bonus% of each order back as credits', style: theme.textTheme.bodySmall),
@@ -594,11 +694,32 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: Text('Min: ${formatKwacha(_minAmount)}', style: theme.textTheme.bodySmall)),
-                Expanded(child: Text('Max: ${formatKwacha(_maxAmount)}', style: theme.textTheme.bodySmall)),
+                Expanded(
+                  child: TextFormField(
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Min amount (K)',
+                      isDense: true,
+                    ),
+                    initialValue: (_minAmount / 100).toStringAsFixed(0),
+                    onChanged: (v) => _minAmount = (double.tryParse(v) ?? 0) * 100 ~/ 1,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Max amount (K)',
+                      isDense: true,
+                    ),
+                    initialValue: (_maxAmount / 100).toStringAsFixed(0),
+                    onChanged: (v) => _maxAmount = (double.tryParse(v) ?? 0) * 100 ~/ 1,
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.save, size: 16),
@@ -617,6 +738,83 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
               'Verifies the Africa\'s Talking airtime credentials with a real K1 top-up.',
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
+            const Divider(height: 28),
+            Row(
+              children: [
+                const Text('Recent orders', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _loadingOrders ? null : _loadOrders,
+                  icon: const Icon(LucideIcons.refreshCw, size: 14),
+                  label: const Text('Refresh'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (_loadingOrders)
+              const LinearProgressIndicator()
+            else if (_orders.isEmpty)
+              Text('No airtime orders yet. Tap Refresh to load them.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted))
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _orders.length,
+                  itemBuilder: (context, i) {
+                    final o = _orders[i];
+                    final id = (o['id'] as num?)?.toInt() ?? 0;
+                    final status = (o['status'] as String? ?? '').toString();
+                    final isFailed = status == 'failed';
+                    final isStuck = status == 'paid' || status == 'sent' || status == 'pending';
+                    final busy = _busy.contains(id);
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        status == 'completed'
+                            ? LucideIcons.checkCircle
+                            : isFailed
+                                ? LucideIcons.xCircle
+                                : LucideIcons.clock,
+                        size: 18,
+                        color: status == 'completed'
+                            ? AppColors.primary
+                            : isFailed
+                                ? AppColors.danger
+                                : AppColors.gold,
+                      ),
+                      title: Text(
+                        '#$id ${formatKwacha(o['amountCents'] as int? ?? 0)} to ${o['phone'] ?? ''}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${o['username'] ?? ''} • $status${(o['error'] as String? ?? '').isEmpty ? '' : '\n${o['error']}'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isFailed || isStuck)
+                            IconButton(
+                              tooltip: 'Retry',
+                              icon: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(LucideIcons.refreshCw, size: 16),
+                              onPressed: busy ? null : () => _retryOrder(id),
+                            ),
+                          if (isFailed || isStuck)
+                            IconButton(
+                              tooltip: 'Refund buyer',
+                              icon: const Icon(LucideIcons.undo2, size: 16, color: AppColors.danger),
+                              onPressed: busy ? null : () => _refundOrder(id),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
           ],
         ),
       ),

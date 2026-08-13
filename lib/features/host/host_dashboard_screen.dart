@@ -180,6 +180,13 @@ class HostDashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                onPressed: () => context.push('/pledges'),
+                icon: const Icon(LucideIcons.calendarClock, size: 18, color: AppColors.primary),
+                label: const Text('Monthly giving pledges'),
+              ),
               const SizedBox(height: 20),
               Text(
                 'My campaigns',
@@ -211,87 +218,7 @@ class HostDashboardScreen extends ConsumerWidget {
                   ),
                 )
               else
-                Card(
-                  child: Column(
-                    children: [
-                       for (final t in data.transactions)
-                         ListTile(
-                           dense: true,
-                           leading: Icon(
-                             t.status == 'confirmed'
-                                 ? LucideIcons.checkCircle
-                                 : t.status == 'failed'
-                                     ? LucideIcons.xCircle
-                                     : LucideIcons.clock,
-                             color: t.status == 'confirmed'
-                                 ? AppColors.primary
-                                 : t.status == 'failed'
-                                     ? AppColors.danger
-                                     : AppColors.gold,
-                           ),
-                            title: Text('${t.displayName} - ${formatKwacha(t.amountCents)}'),
-                            subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.createdAt}'),
-                            isThreeLine: true,
-                            trailing: t.status == 'confirmed'
-                                ? IconButton(
-                                    tooltip: 'Download receipt',
-                                    icon: const Icon(LucideIcons.download, size: 18),
-                                    onPressed: () async {
-                                      final url = ref.read(apiClientProvider).receiptUrl(t.id);
-                                      final uri = Uri.parse(url);
-                                      final messenger = ScaffoldMessenger.of(context);
-                                      if (await canLaunchUrl(uri)) {
-                                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                      } else {
-                                        messenger.showSnackBar(
-                                          const SnackBar(content: Text('Could not open receipt.')),
-                                        );
-                                      }
-                                    },
-                                  )
-                                : t.status == 'pending' && t.lipilaReference != null
-                                   ? IconButton(
-                                       tooltip: 'Check status',
-                                       icon: const Icon(LucideIcons.refreshCw, size: 18),
-                                       onPressed: () async {
-                                         try {
-                                           final res = await ref.read(apiClientProvider)
-                                               .checkContributionStatus(t.lipilaReference!);
-                                           final newStatus = res['status'] as String? ?? 'pending';
-                                           if (newStatus == 'confirmed' || newStatus == 'failed') {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text('Transaction is now $newStatus.'),
-                                                ),
-                                              );
-                                              ref.invalidate(hostProvider);
-                                            }
-                                          } else {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('Still pending on Lipila.'),
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        } catch (_) {
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(
-                                                content: Text('Could not check status.'),
-                                              ),
-                                            );
-                                          }
-                                         }
-                                       },
-                                      )
-                                    : null,
-                          ),
-                    ],
-                  ),
-                ),
+                _HostTransactionsCard(transactions: data.transactions),
               const SizedBox(height: 24),
               Text(
                 'Payout history',
@@ -368,6 +295,7 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
   String _kycType = 'nrc';
   String? _kycDocUrl;
   bool _kycUploading = false;
+  String _orgType = 'individual';
 
   @override
   void dispose() {
@@ -394,6 +322,7 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
             org: org,
             role: role,
             reason: reason,
+            orgType: _orgType,
             kycType: _kycType,
             kycDocUrl: _kycDocUrl,
           );
@@ -528,6 +457,22 @@ class _HostStatusSectionState extends ConsumerState<_HostStatusSection> {
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: _orgType,
+              items: const [
+                DropdownMenuItem(value: 'individual', child: Text('Individual / church member')),
+                DropdownMenuItem(value: 'ngo', child: Text('NGO / non-profit organisation')),
+                DropdownMenuItem(value: 'agency', child: Text('Fundraising agency')),
+              ],
+              onChanged: (v) {
+                if (v != null) setState(() => _orgType = v);
+              },
+              decoration: const InputDecoration(
+                labelText: 'What best describes you?',
+                prefixIcon: Icon(LucideIcons.building, size: 18),
+              ),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: _orgController,
               decoration: const InputDecoration(
@@ -651,6 +596,144 @@ class _MiniStat extends StatelessWidget {
   }
 }
 
+/// Host dashboard "Recent transactions" card — groups the host's donations
+/// into Awaiting payment / Confirmed / Failed sections.
+class _HostTransactionsCard extends ConsumerWidget {
+  final List<Transaction> transactions;
+
+  const _HostTransactionsCard({required this.transactions});
+
+  static const _labels = <String, String>{
+    'pending': 'Awaiting payment',
+    'confirmed': 'Confirmed',
+    'failed': 'Failed',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final grouped = <String, List<Transaction>>{};
+    for (final t in transactions) {
+      final key = _labels.containsKey(t.status) ? t.status : 'pending';
+      grouped.putIfAbsent(key, () => []).add(t);
+    }
+    final keys = _labels.keys.where((k) => grouped[k]?.isNotEmpty ?? false).toList();
+    return Card(
+      child: Column(
+        children: [
+          for (final key in keys) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+              child: Row(
+                children: [
+                  Text(
+                    _labels[key]!,
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${grouped[key]!.length}',
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (final t in grouped[key]!)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                  t.status == 'confirmed'
+                      ? LucideIcons.checkCircle
+                      : t.status == 'failed'
+                          ? LucideIcons.xCircle
+                          : LucideIcons.clock,
+                  color: t.status == 'confirmed'
+                      ? AppColors.primary
+                      : t.status == 'failed'
+                          ? AppColors.danger
+                          : AppColors.gold,
+                ),
+                title: Text('${t.displayName} - ${formatKwacha(t.amountCents)}'),
+                subtitle: Text('${t.campaignTitle}\n${t.phone} • ${t.createdAt}'),
+                isThreeLine: true,
+                trailing: t.status == 'confirmed'
+                    ? IconButton(
+                        tooltip: 'Download receipt',
+                        icon: const Icon(LucideIcons.download, size: 18),
+                        onPressed: () async {
+                          final url = ref.read(apiClientProvider).receiptUrl(t.id);
+                          final uri = Uri.parse(url);
+                          final messenger = ScaffoldMessenger.of(context);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } else {
+                            messenger.showSnackBar(
+                              const SnackBar(content: Text('Could not open receipt.')),
+                            );
+                          }
+                        },
+                      )
+                    : t.status == 'pending' && t.lipilaReference != null
+                        ? IconButton(
+                            tooltip: 'Check status',
+                            icon: const Icon(LucideIcons.refreshCw, size: 18),
+                            onPressed: () async {
+                              try {
+                                final res = await ref.read(apiClientProvider)
+                                    .checkContributionStatus(t.lipilaReference!);
+                                final newStatus = res['status'] as String? ?? 'pending';
+                                if (newStatus == 'confirmed' || newStatus == 'failed') {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Transaction is now $newStatus.'),
+                                      ),
+                                    );
+                                    ref.invalidate(hostProvider);
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Still pending on Lipila.'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Could not check status.'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          )
+                        : null,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _HostCampaignCard extends ConsumerWidget {
   final Campaign campaign;
 
@@ -662,9 +745,9 @@ class _HostCampaignCard extends ConsumerWidget {
     final available = campaign.availableCents ?? 0;
     final canWithdraw = available >= (campaign.minWithdrawCents ?? 20000);
     // Calculate effective payout after Lipila + platform processing fees.
-    // Platform processing fee = K0.24 + 1% (K3 minimum), same as collections.
+    // Platform processing fee = K0.48 + 1% (K3 minimum), same as collections.
     final lipilaFee = (available * 1.5 / 100).round();
-    final platformFee = [324, (available * 1 / 100).round() + 24].reduce((a, b) => a > b ? a : b);
+    final platformFee = [348, (available * 1 / 100).round() + 48].reduce((a, b) => a > b ? a : b);
     final netPayout = available - lipilaFee - platformFee;
 
     return Card(
@@ -787,10 +870,10 @@ class _HostCampaignCard extends ConsumerWidget {
                               const SizedBox(height: 12),
                               Text(
                                 'Available = confirmed donations minus anything already paid out. '
-                                'Processing fees (K0.24 + 1% (K3 minimum) + Lipila charges) are paid by the '
+                                'Processing fees (K0.48 + 1% (K3 minimum) + Lipila charges) are paid by the '
                                 'donor on top of their gift, so the campaign receives the full gift amount.\n\n'
                                 'Example: a K50 donation gives K50.00 to the campaign. The donor pays '
-                                'K54.49 (K50.00 + K4.49 processing fees: K3.24 platform — K3.00 minimum + K0.24 — '
+                                'K54.73 (K50.00 + K4.73 processing fees: K3.48 platform — K3.00 minimum + K0.48 — '
                                 'plus K1.25 Lipila). Withdraw when the balance reaches the minimum shown below.',
                                 style: Theme.of(ctx)
                                     .textTheme
@@ -947,7 +1030,20 @@ class _HostCampaignCard extends ConsumerWidget {
                     onPressed: () => context.push('/host/edit/${campaign.id}'),
                     icon: const Icon(LucideIcons.pencil, size: 15),
                     label: const Text('Edit', style: TextStyle(fontSize: 13)),
-                  ),                if (campaign.status != 'deleted')
+                  ),
+                if (campaign.status != 'deleted')
+                  OutlinedButton.icon(
+                    onPressed: () => _postUpdate(ref, context, campaign),
+                    icon: const Icon(LucideIcons.megaphone, size: 15),
+                    label: const Text('Update', style: TextStyle(fontSize: 13)),
+                  ),
+                if (campaign.status != 'deleted')
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/host/analytics/${campaign.id}'),
+                    icon: const Icon(LucideIcons.barChart3, size: 15),
+                    label: const Text('Stats', style: TextStyle(fontSize: 13)),
+                  ),
+                if (campaign.status != 'deleted')
                   IconButton(
                     tooltip: 'Request deletion',
                     icon: const Icon(LucideIcons.trash2,
@@ -962,6 +1058,98 @@ class _HostCampaignCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _postUpdate(WidgetRef ref, BuildContext context, Campaign campaign) async {
+    final controller = TextEditingController();
+    var sending = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(campaign.isEvent ? 'Post an event update' : 'Post an update'),
+          content: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Share news with your ${campaign.isEvent ? 'attendees and ticket holders' : 'donors'}. '
+                  'Your update is reviewed by a Kingdom Sponsor admin before it goes live '
+                  'and is pushed to everyone who supports this ${campaign.isEvent ? 'event' : 'campaign'}.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: AppColors.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLength: 500,
+                  maxLines: 5,
+                  minLines: 3,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Update message',
+                    hintText: 'e.g. We\'ve reached 50% of our goal — thank you!',
+                    alignLabelWithHint: true,
+                    prefixIcon: Icon(LucideIcons.megaphone),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: sending ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: sending ? null : () async {
+                final text = controller.text.trim();
+                if (text.isEmpty) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Write your update first.')),
+                  );
+                  return;
+                }
+                setDialogState(() => sending = true);
+                try {
+                  final res = await ref.read(apiClientProvider).postAnnouncement(campaign.id, text);
+                  final status = res['status'] as String?;
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx, true);
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(
+                        status == 'approved'
+                            ? 'Update published — your supporters have been notified.'
+                            : 'Update submitted for review. You\'ll be notified once an admin approves it.',
+                      )),
+                    );
+                  }
+                } on ApiException catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(e.message)));
+                    setDialogState(() => sending = false);
+                  }
+                } catch (_) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Could not post the update. Try again.')),
+                    );
+                    setDialogState(() => sending = false);
+                  }
+                }
+              },
+              child: sending
+                  ? const SizedBox(width: 18, height: 18, child: AppIconSpinner(size: 18))
+                  : const Text('Submit for review'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (ok == true) ref.invalidate(hostProvider);
   }
 
   Future<void> _requestDelete(WidgetRef ref, BuildContext context) async {

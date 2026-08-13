@@ -26,6 +26,13 @@ class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScree
     'Failed': 'failed',
   };
 
+  // Category order + labels for the grouped ledger.
+  static const _categories = <String, String>{
+    'confirmed': 'Confirmed donations',
+    'pending': 'Awaiting payment',
+    'failed': 'Failed',
+  };
+
   String _filter = 'All';
   bool _loadingMore = false;
 
@@ -76,56 +83,107 @@ class _AdminTransactionsScreenState extends ConsumerState<AdminTransactionsScree
                 final txs = filter == null
                     ? data.transactions
                     : data.transactions.where((t) => t.status == filter).toList();
+                if (txs.isEmpty) {
+                  return RefreshIndicator(
+                    onRefresh: () async => ref.invalidate(adminLedgerProvider),
+                    child: const _Empty(message: 'No contributions yet.'),
+                  );
+                }
+                // Group the ledger into Confirmed / Pending / Failed sections.
+                final grouped = <String, List<AdminTransaction>>{};
+                for (final t in txs) {
+                  final key = _categories.keys.contains(t.status)
+                      ? t.status
+                      : 'failed';
+                  grouped.putIfAbsent(key, () => []).add(t);
+                }
+                final orderedKeys = _categories.keys
+                    .where((k) => grouped[k]?.isNotEmpty ?? false)
+                    .toList();
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(adminLedgerProvider),
-                  child: txs.isEmpty
-                      ? const _Empty(message: 'No contributions yet.')
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: txs.length + 1,
-                          separatorBuilder: (_, _) => const SizedBox(height: 6),
-                          itemBuilder: (context, i) => i < txs.length
-                              ? _TxTile(tx: txs[i])
-                              : Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  child: OutlinedButton.icon(
-                                    onPressed: _loadingMore
-                                        ? null
-                                        : () async {
-                                            setState(() => _loadingMore = true);
-                                            try {
-                                              await ref
-                                                  .read(adminLedgerProvider.notifier)
-                                                  .loadMoreTransactions();
-                                            } catch (_) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(const SnackBar(
-                                                        content: Text(
-                                                            'Could not load more. Try again.')));
-                                              }
-                                            } finally {
-                                              if (mounted) {
-                                                setState(() =>
-                                                    _loadingMore = false);
-                                              }
-                                            }
-                                          },
-                                    icon: _loadingMore
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          )
-                                        : const Icon(LucideIcons.chevronsDown,
-                                            size: 16),
-                                    label: Text(_loadingMore
-                                        ? 'Loading…'
-                                        : 'Load more'),
+                  child: ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      for (final key in orderedKeys) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                          child: Row(
+                            children: [
+                              Text(
+                                _categories[key]!,
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${grouped[key]!.length}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primary,
                                   ),
                                 ),
+                              ),
+                            ],
+                          ),
                         ),
+                        for (final t in grouped[key]!)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: _TxTile(tx: t),
+                          ),
+                      ],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: _loadingMore
+                              ? null
+                              : () async {
+                                  setState(() => _loadingMore = true);
+                                  try {
+                                    await ref
+                                        .read(adminLedgerProvider.notifier)
+                                        .loadMoreTransactions();
+                                  } catch (_) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(const SnackBar(
+                                              content: Text(
+                                                  'Could not load more. Try again.')));
+                                    }
+                                  } finally {
+                                    if (mounted) {
+                                      setState(() =>
+                                          _loadingMore = false);
+                                    }
+                                  }
+                                },
+                          icon: _loadingMore
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Icon(LucideIcons.chevronsDown,
+                                  size: 16),
+                          label: Text(_loadingMore
+                              ? 'Loading…'
+                              : 'Load more'),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -401,7 +459,7 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
     final ledger = ref.watch(adminLedgerProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Payouts & settlements'),
+        title: const Text('Payouts & Settlements'),
         actions: [
           IconButton(icon: const Icon(LucideIcons.refreshCw), onPressed: () { ref.invalidate(adminLedgerProvider); _loadBalance(); }),
         ],
@@ -453,10 +511,65 @@ class _AdminDisbursementsScreenState extends ConsumerState<AdminDisbursementsScr
                       child: _Empty(message: 'No payouts or fee settlements yet.'),
                     );
                   }
-                  return SliverList.separated(
-                    itemCount: disbs.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, i) => _DisbTile(d: disbs[i]),
+                  // Group the payout history into labelled categories.
+                  const labels = <String, String>{
+                    'payout': 'Host payouts',
+                    'sweep': 'Fee sweeps',
+                    'admin_withdraw': 'Admin withdrawals',
+                  };
+                  final grouped = <String, List<Disbursement>>{};
+                  for (final d in disbs) {
+                    grouped.putIfAbsent(d.kind, () => []).add(d);
+                  }
+                  final order = ['payout', 'sweep', 'admin_withdraw'];
+                  final keys = order.where((k) => grouped[k]?.isNotEmpty ?? false).toList();
+                  return SliverList.builder(
+                    itemCount: keys.length,
+                    itemBuilder: (context, i) {
+                      final key = keys[i];
+                      final list = grouped[key]!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                            child: Row(
+                              children: [
+                                Text(
+                                  labels[key] ?? key,
+                                  style: const TextStyle(
+                                    color: AppColors.textMuted,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${list.length}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          for (final d in list)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: _DisbTile(d: d),
+                            ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),

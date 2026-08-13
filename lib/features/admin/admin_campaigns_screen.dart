@@ -329,7 +329,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: category,
-                    items: kCampaignCategories
+                    items: kSortedCategories
                         .map((c) => DropdownMenuItem(
                               value: c,
                               child: Text(c),
@@ -562,6 +562,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
     }
   }
 
+  /// Restores a soft-deleted campaign (needs the `restore` scope).
   @override
   Widget build(BuildContext context) {
     final campaigns = _campaigns;
@@ -614,80 +615,171 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                       ),
                     ],
                   )
-                : ListView.separated(
+                : ListView(
                 padding: const EdgeInsets.all(16),
-                itemCount: campaigns.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final c = campaigns[i];
-                  final deleted = c.status == 'deleted';
-                  return Card(
-                    child: ListTile(
-                      leading: deleted
-                          ? CircleAvatar(
-                              radius: 18,
-                              backgroundColor: AppColors.textMuted.withValues(alpha: 0.12),
-                              child: Icon(
-                                LucideIcons.archive,
-                                size: 18,
-                                color: AppColors.textMuted,
-                              ),
-                            )
-                          : ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: SizedBox(
-                                width: 36,
-                                height: 36,
-                                child: CampaignImage(campaign: c, fit: BoxFit.cover),
-                              ),
-                            ),
-                      title: Text(
-                        c.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text(
-                        deleted
-                            ? 'Deleted'
-                            : '${formatKwacha(c.raisedCents)} raised \u00b7 ${formatKwacha(c.availableCents ?? 0)} available',
-                      ),
-                      isThreeLine: false,
-                      trailing: deleted
-                          ? null
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (c.promoted)
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 6),
-                                    child: Icon(LucideIcons.trendingUp,
-                                        size: 18, color: AppColors.primary),
-                                  )
-                                else
-                                  IconButton(
-                                    tooltip: 'Promote campaign',
-                                    icon: const Icon(LucideIcons.rocket,
-                                        color: AppColors.primary),
-                                    onPressed: () => _promoteCampaign(c),
-                                  ),
-                                IconButton(
-                                  tooltip: 'Edit campaign',
-                                  icon: const Icon(LucideIcons.pencil, color: AppColors.primary),
-                                  onPressed: () => _editCampaign(c),
-                                ),
-                                IconButton(
-                                  tooltip: 'Delete campaign',
-                                  icon: const Icon(LucideIcons.trash2, color: AppColors.danger),
-                                  onPressed: () => _confirmDelete(c),
-                                ),
-                              ],
-                            ),
-                      onTap: deleted ? null : () => context.push('/campaign/${c.id}'),
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push('/admin/recycle-bin'),
+                      icon: const Icon(LucideIcons.archive, size: 16),
+                      label: const Text('Recycle Bin'),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: 8),
+                  for (final c in campaigns.where((c) => c.status != 'deleted'))
+                    _AdminCampaignTile(
+                      campaign: c,
+                      onTap: () => context.push('/campaign/${c.id}'),
+                      onPromote: () => _promoteCampaign(c),
+                      onEdit: () => _editCampaign(c),
+                      onDelete: () => _confirmDelete(c),
+                    ),
+                ],
               ),
+      ),
+    );
+  }
+}
+
+/// A richer admin campaign row: cover, host, raised/available, status badges
+/// (private / fees waived / event tickets) and per-action controls.
+class _AdminCampaignTile extends StatelessWidget {
+  final Campaign campaign;
+  final VoidCallback? onTap;
+  final VoidCallback? onPromote;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  const _AdminCampaignTile({
+    required this.campaign,
+    this.onTap,
+    this.onPromote,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = campaign;
+    final deleted = c.status == 'deleted';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 56,
+                  height: 56,
+                  child: deleted
+                      ? Container(
+                          color: AppColors.textMuted.withValues(alpha: 0.12),
+                          child: const Icon(LucideIcons.archive, color: AppColors.textMuted),
+                        )
+                      : CampaignImage(campaign: c, fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, height: 1.25),
+                    ),
+                    if (c.hostName != null) ...[
+                      const SizedBox(height: 2),
+                      Text('Host: ${c.hostName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11.5)),
+                    ],
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        _miniChip(deleted ? 'Deleted' : c.status, deleted ? AppColors.danger : AppColors.primary),
+                        if (c.isPrivate) _miniChip('Private', AppColors.textMuted),
+                        if (c.waivePayoutFees) _miniChip('Fees waived', AppColors.gold),
+                        if (c.isEvent) _miniChip('${c.eventTiers.length} ticket tiers', AppColors.gold),
+                        if (c.promoted) _miniChip('Promoted', AppColors.gold),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${formatKwacha(c.raisedCents)} raised • ${c.donorCount} donors'
+                      '${c.availableCents != null ? ' • ${formatKwacha(c.availableCents!)} available' : ''}',
+                      style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '${c.category}${c.campaignType != 'community' ? ' • ${kCampaignTypes[c.campaignType] ?? c.campaignType}' : ''}',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (onPromote != null)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
+                              onPressed: onPromote,
+                              icon: const Icon(LucideIcons.rocket, size: 14, color: AppColors.primary),
+                              label: Text(c.promoted ? 'Promoted' : 'Promote'),
+                            ),
+                          ),
+                        if (onEdit != null) ...[
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
+                              onPressed: onEdit,
+                              icon: const Icon(LucideIcons.pencil, size: 14),
+                              label: const Text('Edit'),
+                            ),
+                          ),
+                        ],
+                        if (onDelete != null) ...[
+                          const SizedBox(width: 6),
+                          IconButton(
+                            tooltip: 'Delete campaign',
+                            icon: const Icon(LucideIcons.trash2, size: 18, color: AppColors.danger),
+                            onPressed: onDelete,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
       ),
     );
   }

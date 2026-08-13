@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
+import '../l10n.dart';
 import '../theme.dart';
 
-class BottomNavShell extends StatefulWidget {
+class BottomNavShell extends ConsumerStatefulWidget {
   final Widget child;
 
   const BottomNavShell({super.key, required this.child});
 
   @override
-  State<BottomNavShell> createState() => _BottomNavShellState();
+  ConsumerState<BottomNavShell> createState() => _BottomNavShellState();
 }
 
-class _BottomNavShellState extends State<BottomNavShell> {
+class _BottomNavShellState extends ConsumerState<BottomNavShell> {
   int _currentIndex = 0;
   bool _showNav = true;
 
   static const _tabs = [
-    _NavTab('/', LucideIcons.home, 'Campaigns', AppColors.primary),
-    _NavTab('/pledges', LucideIcons.calendarClock, 'Pledges', AppColors.gold),
-    _NavTab('/host', LucideIcons.user, 'Host', AppColors.primary),
-    _NavTab('/settings', LucideIcons.settings, 'Settings', AppColors.textMuted),
+    _NavTab('/', LucideIcons.home, 'nav.campaigns', AppColors.primary),
+    _NavTab('/events', LucideIcons.ticket, 'nav.events', AppColors.gold),
+    _NavTab('/host', LucideIcons.user, 'nav.host', AppColors.primary),
+    _NavTab('/settings', LucideIcons.settings, 'nav.settings', AppColors.textMuted),
   ];
 
   @override
@@ -60,6 +62,7 @@ class _BottomNavShellState extends State<BottomNavShell> {
   Widget build(BuildContext context) {
     _syncIndex();
     final loc = GoRouterState.of(context).matchedLocation;
+    final lang = ref.watch(languageProvider);
     final showNavOnRoute = _tabs.any((tab) => loc == tab.path);
     final showNav = showNavOnRoute && _showNav;
     return Scaffold(
@@ -108,8 +111,8 @@ class _BottomNavShellState extends State<BottomNavShell> {
                           size: 22, color: AppColors.textMuted),
                       selectedIcon: Icon(tab.icon,
                           size: 22, color: tab.color),
-                      label: tab.label,
-                      tooltip: tab.label,
+                      label: tr(lang, tab.labelKey),
+                      tooltip: tr(lang, tab.labelKey),
                     ),
                 ],
               ),
@@ -122,8 +125,8 @@ class _BottomNavShellState extends State<BottomNavShell> {
 class _NavTab {
   final String path;
   final IconData icon;
-  final String label;
+  final String labelKey;
   final Color color;
 
-  const _NavTab(this.path, this.icon, this.label, this.color);
+  const _NavTab(this.path, this.icon, this.labelKey, this.color);
 }

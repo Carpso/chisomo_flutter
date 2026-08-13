@@ -18,6 +18,7 @@ import '../../core/widgets/avatar.dart';
 import '../../core/api_client.dart';
 import '../../core/date_utils.dart';
 import '../airtime/airtime_screen.dart';
+import '../auth/auth_controller.dart';
 import '../host/host_badge_screen.dart';
 import '../campaigns/campaigns_controller.dart';
 import 'admin_tile_detail_screen.dart';
@@ -30,9 +31,58 @@ class AdminScreen extends ConsumerStatefulWidget {
   ConsumerState<AdminScreen> createState() => _AdminScreenState();
 }
 
+/// Draft SMS templates for warning threat actors / intruders. Every message is
+/// kept <= 96 characters so it always bills as ONE SMS, and taps just fill the
+/// message box (the admin edits the recipient + copy before sending).
+class ThreatSmsTemplate {
+  final String label;
+  final String text;
+  final IconData icon;
+
+  const ThreatSmsTemplate({
+    required this.label,
+    required this.text,
+    required this.icon,
+  });
+}
+
+const kThreatSmsTemplates = <ThreatSmsTemplate>[
+  ThreatSmsTemplate(
+    label: 'Intruder warning',
+    icon: LucideIcons.shieldAlert,
+    text: 'KSPONSOR SECURITY: Failed logins using your number were blocked. If not you, contact support now.',
+  ),
+  ThreatSmsTemplate(
+    label: 'Suspicious activity',
+    icon: LucideIcons.eyeOff,
+    text: 'KSPONSOR SECURITY: Suspicious activity on your number. Contact support if this was not you.',
+  ),
+  ThreatSmsTemplate(
+    label: 'Account at risk',
+    icon: LucideIcons.userX,
+    text: 'KSPONSOR: Repeated attack attempts linked to your number. It may be suspended if they continue.',
+  ),
+  ThreatSmsTemplate(
+    label: 'Content violation',
+    icon: LucideIcons.alertTriangle,
+    text: 'KSPONSOR: Your campaign breaks our rules and may be removed. Contact support to resolve it.',
+  ),
+  ThreatSmsTemplate(
+    label: 'Harassment warning',
+    icon: LucideIcons.ban,
+    text: 'KSPONSOR: Harassment is not allowed. Continued abuse will lead to a permanent ban.',
+  ),
+  ThreatSmsTemplate(
+    label: 'Final warning',
+    icon: LucideIcons.gavel,
+    text: 'KSPONSOR: Final warning for policy violations. Your account will be banned unless it stops now.',
+  ),
+];
+
 class _AdminScreenState extends ConsumerState<AdminScreen> {
   final _scrollController = ScrollController();
   final Map<String, GlobalKey> _sectionKeys = {};
+  String _tab = 'overview';
 
   @override
   void dispose() {
@@ -57,9 +107,694 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     return k;
   }
 
-  /// Downloads an admin export (CSV/PDF/JSON) with the session token and
-  /// offers to open it once saved.
-  Future<void> _downloadExport(BuildContext context, String path, String fileName) async {
+  bool _can(String scope) {
+    final auth = ref.read(authControllerProvider).value;
+    return auth?.canScope(scope) ?? false;
+  }
+
+  String _scopeLabel(String scope) => switch (scope) {
+    'campaigns' => 'Campaigns',
+    'donations' => 'Donations & payouts',
+    'tickets' => 'Support tickets',
+    'users' => 'Users',
+    'settings' => 'Settings',
+    'finance' => 'Finance',
+    'restore' => 'Restore',
+    _ => scope,
+  };
+
+  static const _sectionLabels = <(String, String, IconData)>[
+    ('stats', 'Stats', LucideIcons.barChart3),
+    ('apps', 'Applications', LucideIcons.userCheck),
+    ('top', 'Top campaigns', LucideIcons.trophy),
+    ('users', 'New users', LucideIcons.userPlus),
+    ('promos', 'Promotions', LucideIcons.star),
+    ('tickets', 'Tickets', LucideIcons.headphones),
+    ('deletes', 'Delete requests', LucideIcons.trash2),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final admin = ref.watch(adminDataProvider);
+    final auth = ref.watch(authControllerProvider).value;
+    final isAssistant = (auth?.isAdmin ?? false) == false && (auth?.assistantScopes.isNotEmpty ?? false);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.refreshCw),
+            onPressed: () => ref.invalidate(adminDataProvider),
+          ),
+        ],
+      ),
+       body: admin.when(
+         loading: () => const Center(child: AppIconSpinner()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(friendlyError(e), textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => ref.invalidate(adminDataProvider),
+                  child: const Text('Try again'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        data: (data) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'overview',
+                    label: Text('Overview'),
+                    icon: Icon(LucideIcons.layoutGrid, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: 'tools',
+                    label: Text('Tools & settings'),
+                    icon: Icon(LucideIcons.settings, size: 16),
+                  ),
+                ],
+                selected: {_tab},
+                onSelectionChanged: (s) => setState(() => _tab = s.first),
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: WidgetStatePropertyAll(Color(0xFF151521)),
+                  foregroundColor: WidgetStatePropertyAll(Colors.white),
+                  side: WidgetStatePropertyAll(BorderSide(color: Color(0xFF2A2A3A))),
+                ),
+              ),
+            ),
+            if (isAssistant)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(LucideIcons.shield, size: 15, color: Color(0xFF8A6A00)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You\'re an assistant. Access is limited to: '
+                          '${(auth?.assistantScopes ?? const {}).map(_scopeLabel).join(', ')}',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B5200), height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.invalidate(adminDataProvider),
+                child: _tab == 'tools'
+                    ? ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          const _BackupMenuSection(),
+                          const SizedBox(height: 12),
+                          const _SmsToolsSection(),
+                          const SizedBox(height: 12),
+                          const _PushBroadcastSection(),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  const Icon(LucideIcons.barChart3, color: AppColors.primary, size: 20),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Analytics & reports',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        Text('Donation trends, conversion, top events, weekly email report',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () => context.push('/admin/analytics'),
+                                    icon: const Icon(LucideIcons.trendingUp, size: 15),
+                                    label: const Text('Open'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  const Icon(LucideIcons.messageCircle, color: AppColors.primary, size: 20),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Team Chat',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        Text('Private staff group chat with image sharing',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () => context.push('/team-chat'),
+                                    icon: const Icon(LucideIcons.send, size: 15),
+                                    label: const Text('Open'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  const Icon(LucideIcons.qrCode, color: AppColors.primary, size: 20),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Confirm users by QR',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        Text('Scan a user\'s profile code to verify them',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () => context.push('/admin/scan-qr'),
+                                    icon: const Icon(LucideIcons.scanLine, size: 15),
+                                    label: const Text('Scan'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                children: [
+                                  const Icon(LucideIcons.receipt, color: AppColors.gold, size: 20),
+                                  const SizedBox(width: 10),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Tax & Compliance',
+                                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                        Text('Turnover tax, invoices, due dates and compliance',
+                                            style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () => context.push('/admin/tax'),
+                                    icon: const Icon(LucideIcons.banknote, size: 15),
+                                    label: const Text('Open'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          KeyedSubtree(
+                            key: _newKey('promos'),
+                            child: _PromotionsSection(),
+                          ),
+                          const SizedBox(height: 12),
+                          const _PromoConfigSection(),
+                          const SizedBox(height: 12),
+                          const AirtimeAdminConfig(),
+                          const SizedBox(height: 12),
+                          const BadgeAdminConfig(),
+                          const SizedBox(height: 12),
+                          const _MtnStatusSection(),
+                          const SizedBox(height: 12),
+                          const _FailedLoginsSection(),
+                          const SizedBox(height: 12),
+                          const _TelegramConfigSection(),
+                          const SizedBox(height: 12),
+                          const _BanSection(),
+                          const SizedBox(height: 12),
+                          const _PushStatusSection(),
+                        ],
+                      )
+                    : SingleChildScrollView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              height: 44,
+                              child: ListView(
+                                scrollDirection: Axis.horizontal,
+                                children: [
+                                  for (final (id, label, icon) in _sectionLabels)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
+                                      child: ActionChip(
+                                        avatar: Icon(icon, size: 14, color: AppColors.primary),
+                                        label: Text(label),
+                                        onPressed: () => _jumpTo(id),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            KeyedSubtree(
+                              key: _newKey('stats'),
+                              child: _StatGrid(stats: data.stats, auth: ref.watch(authControllerProvider).value),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                if (_can('donations'))
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                      ),
+                                      onPressed: () => context.push('/admin/transactions'),
+                                      icon: const Icon(LucideIcons.receipt, size: 18),
+                                      label: const Text('Transactions'),
+                                    ),
+                                  ),
+                                if (_can('donations')) const SizedBox(width: 10),
+                                if (_can('donations'))
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                      ),
+                                      onPressed: () => context.push('/admin/disbursements'),
+                                      icon: const Icon(LucideIcons.send, size: 18),
+                                      label: const Text('Payouts & sweeps'),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                if (_can('campaigns'))
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                      ),
+                                      onPressed: () => context.push('/admin/campaigns'),
+                                      icon: const AppBrandIcon(size: 18),
+                                      label: const Text('Campaigns'),
+                                    ),
+                                  ),
+                                if (_can('campaigns')) const SizedBox(width: 10),
+                                if (_can('donations'))
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                      ),
+                                      onPressed: () => context.push('/admin/lipila-logs'),
+                                      icon: const Icon(LucideIcons.list, size: 18),
+                                      label: const Text('Lipila logs'),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            KeyedSubtree(
+                              key: _newKey('apps'),
+                              child: _ApplicationsSection(applications: data.applications),
+                            ),
+                            const SizedBox(height: 20),
+                            if (data.topCampaigns.isNotEmpty) ...[
+                              KeyedSubtree(
+                                key: _newKey('top'),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _SectionTitle(
+                                      icon: LucideIcons.trophy,
+                                      title: 'Top campaigns',
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _countBadge(data.topCampaigns.length),
+                                          TextButton.icon(
+                                            onPressed: () => context.push('/admin/campaigns'),
+                                            icon: const Icon(LucideIcons.list, size: 14),
+                                            label: const Text('View all'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Card(
+                                      child: Column(
+                                        children: [
+                                          for (final c in data.topCampaigns)
+                                            ListTile(
+                                              dense: true,
+                                              leading: ClipRRect(
+                                                borderRadius: BorderRadius.circular(10),
+                                                child: SizedBox(
+                                                  width: 32,
+                                                  height: 32,
+                                                  child: CampaignImage(campaign: c, fit: BoxFit.cover),
+                                                ),
+                                              ),
+                                              title: Text(c.title,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                                              subtitle: Text('${formatKwacha(c.raisedCents)} of ${c.goalLabel}'),
+                                              trailing: Text(
+                                                '${(c.progress * 100).round()}%',
+                                                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
+                                              ),
+                                              onTap: () => context.push('/campaign/${c.id}'),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 20),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (data.topDonors.isNotEmpty) ...[
+                              _SectionTitle(
+                                icon: LucideIcons.users,
+                                title: 'Top supporters',
+                                trailing: _countBadge(data.topDonors.length),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                child: Column(
+                                  children: [
+                                    for (final d in data.topDonors)
+                                      ListTile(
+                                        dense: true,
+                                        leading: Avatar(name: d.username, radius: 16),
+                                        title: Text(d.username, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                        trailing: Text(
+                                          formatKwacha(d.totalCents),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                            if (data.topReferrers.isNotEmpty) ...[
+                              _SectionTitle(
+                                icon: LucideIcons.userPlus,
+                                title: 'Top referrers',
+                                trailing: _countBadge(data.topReferrers.length),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                child: Column(
+                                  children: [
+                                    for (final r in data.topReferrers)
+                                      ListTile(
+                                        dense: true,
+                                        leading: Avatar(name: r.username, radius: 16),
+                                        title: Text(r.username,
+                                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                                        trailing: Text(
+                                          '${r.invites} invites',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                            if (data.recent.isNotEmpty) ...[
+                              _SectionTitle(
+                                icon: LucideIcons.receipt,
+                                title: 'Recent contributions',
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _countBadge(data.recent.length),
+                                    TextButton.icon(
+                                      onPressed: () => context.push('/admin/transactions'),
+                                      icon: const Icon(LucideIcons.list, size: 14),
+                                      label: const Text('View all'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                child: Column(
+                                  children: [
+                                    for (final r in data.recent)
+                                      ListTile(
+                                        dense: true,
+                                        leading: const Icon(LucideIcons.coins, color: AppColors.primary, size: 20),
+                                        title: Text('${r.username} • ${formatKwacha(r.amountCents)}',
+                                            style: const TextStyle(fontWeight: FontWeight.w700)),
+                                        subtitle: Text('${r.campaignTitle}\n${r.date}'),
+                                        isThreeLine: true,
+                                        trailing: Text(
+                                          '+${formatKwacha(r.platformFeeCents)}',
+                                          style: const TextStyle(fontSize: 12, color: AppColors.primary),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            if (data.recentUsers.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              KeyedSubtree(
+                                key: _newKey('users'),
+                                child: _SectionTitle(
+                                  icon: LucideIcons.userPlus,
+                                  title: 'New users',
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _countBadge(data.recentUsers.length),
+                                      TextButton.icon(
+                                        onPressed: () => context.push('/admin/users'),
+                                        icon: const Icon(LucideIcons.list, size: 14),
+                                        label: const Text('View all'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Card(
+                                child: Column(
+                                  children: [
+                                    for (final r in data.recentUsers)
+                                      ListTile(
+                                        dense: true,
+                                        leading: Avatar(name: r.username, radius: 16),
+                                        title: Text(
+                                          r.displayName,
+                                          style: const TextStyle(fontWeight: FontWeight.w700),
+                                        ),
+                                        subtitle: Text('${r.phone}\n${r.createdAt}'),
+                                        isThreeLine: true,
+                                        trailing: Text(
+                                          _hostBadgeLabel(r.hostStatus),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: r.hostStatus == 'approved'
+                                                ? AppColors.primary
+                                                : AppColors.textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 20),
+                            KeyedSubtree(
+                              key: _newKey('tickets'),
+                              child: const _TicketsSection(),
+                            ),
+                            const SizedBox(height: 12),
+                            KeyedSubtree(
+                              key: _newKey('deletes'),
+                              child: const _DeleteRequestsSection(),
+                            ),
+                          ],
+                        ),
+                      ),
+            ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Admin: broadcast a push notification to all users / hosts / donors.
+class _PushBroadcastSection extends ConsumerStatefulWidget {
+  const _PushBroadcastSection();
+
+  @override
+  ConsumerState<_PushBroadcastSection> createState() => _PushBroadcastSectionState();
+}
+
+class _PushBroadcastSectionState extends ConsumerState<_PushBroadcastSection> {
+  final _titleController = TextEditingController();
+  final _messageController = TextEditingController();
+  String _group = 'all';
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final title = _titleController.text.trim();
+    final message = _messageController.text.trim();
+    if (title.isEmpty || message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a title and message.')));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send broadcast push?'),
+        content: Text('Notify everyone in "${_group == 'all' ? 'All users' : _group == 'hosts' ? 'Approved hosts' : 'Donors'}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _sending = true);
+    try {
+      final res = await ref.read(apiClientProvider).sendPushBroadcast(_group, title, message);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] as String? ?? 'Broadcast sent')),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.bellRing, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('Push broadcast', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text('Send an urgent push to everyone, hosts, or donors (maintenance, updates).',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: _group,
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All users')),
+                DropdownMenuItem(value: 'hosts', child: Text('Approved hosts')),
+                DropdownMenuItem(value: 'donors', child: Text('Donors')),
+              ],
+              onChanged: (v) => setState(() => _group = v ?? 'all'),
+              decoration: const InputDecoration(labelText: 'Audience', isDense: true),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              decoration: const InputDecoration(labelText: 'Title', isDense: true),
+              initialValue: '',
+              controller: _titleController,
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              decoration: const InputDecoration(labelText: 'Message', isDense: true),
+              controller: _messageController,
+              maxLines: 3,
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: _sending
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(LucideIcons.send, size: 16),
+              label: Text(_sending ? 'Sending…' : 'Send broadcast'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One "Backup & export" card — the file type is chosen from a menu instead of
+/// three separate buttons eating the whole dashboard.
+class _BackupMenuSection extends ConsumerWidget {
+  const _BackupMenuSection();
+
+  Future<void> _download(BuildContext context, WidgetRef ref, String path, String fileName) async {
     final messenger = ScaffoldMessenger.of(context);
     final api = ref.read(apiClientProvider);
     final token = api.token;
@@ -97,320 +832,443 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     }
   }
 
-  static const _sectionLabels = <(String, String, IconData)>[
-    ('stats', 'Stats', LucideIcons.barChart3),
-    ('apps', 'Applications', LucideIcons.userCheck),
-    ('top', 'Top campaigns', LucideIcons.trophy),
-    ('promos', 'Promotions', LucideIcons.star),
-    ('tickets', 'Tickets', LucideIcons.headphones),
-    ('deletes', 'Delete requests', LucideIcons.trash2),
-  ];
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.databaseBackup, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('Backup & export',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                const Spacer(),
+                PopupMenuButton<String>(
+                  tooltip: 'Choose export type',
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'csv':
+                        _download(context, ref, '/api/admin/stats/export.csv', 'kingdom_sponsor_stats.csv');
+                      case 'pdf':
+                        _download(context, ref, '/api/admin/stats/export.pdf', 'kingdom_sponsor_report.pdf');
+                      case 'json':
+                        _download(context, ref, '/api/admin/backup/export', 'kingdom_sponsor_backup.json');
+                    }
+                  },
+                  itemBuilder: (ctx) => const [
+                    PopupMenuItem(
+                      value: 'csv',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(LucideIcons.fileSpreadsheet, size: 18, color: AppColors.primary),
+                        title: Text('Stats CSV'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'pdf',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(LucideIcons.fileText, size: 18, color: AppColors.primary),
+                        title: Text('PDF report'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'json',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(LucideIcons.database, size: 18, color: AppColors.primary),
+                        title: Text('Full backup (JSON)'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Stats CSV, PDF report and the full database backup are all inside the menu.',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// SMS tools: send a broadcast to any number(s), edit the sign-in notice, and
+/// inspect recent delivery activity (so MTN-style failures are visible).
+class _SmsToolsSection extends ConsumerStatefulWidget {
+  const _SmsToolsSection();
+
+  @override
+  ConsumerState<_SmsToolsSection> createState() => _SmsToolsSectionState();
+}
+
+class _SmsToolsSectionState extends ConsumerState<_SmsToolsSection> {
+  final _phoneController = TextEditingController();
+  final _messageController = TextEditingController();
+  final _noticeController = TextEditingController();
+  final _groupMessageController = TextEditingController();
+  bool _sending = false;
+  bool _savingNotice = false;
+  bool _loadingActivity = false;
+  bool _sendingGroup = false;
+  String _group = 'all_users';
+  final Map<String, String> _groupOptions = {
+    'all_users': 'All users',
+    'new_7d': 'New users (7 days)',
+    'new_30d': 'New users (30 days)',
+    'hosts': 'Approved hosts',
+    'donors': 'Donors (made a gift)',
+    'active_30d': 'Active last 30 days',
+  };
+  List<dynamic> _activity = [];
+  Map<String, String> _netStatus = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotice();
+    _loadNetworkStatus();
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _messageController.dispose();
+    _noticeController.dispose();
+    _groupMessageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadNotice() async {
+    try {
+      final res = await ref.read(apiClientProvider).getSmsNotice();
+      if (mounted) {
+        _noticeController.text = (res['text'] as String? ?? '');
+        final nets = res['networks'] as Map<String, dynamic>? ?? {};
+        setState(() {
+          _netStatus = nets.map((k, v) => MapEntry(k, v as String? ?? 'ok'));
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadNetworkStatus() async {
+    try {
+      final res = await ref.read(apiClientProvider).getNetworkStatus();
+      if (mounted) {
+        setState(() {
+          _netStatus = (res['networks'] as Map<String, dynamic>? ?? {})
+              .map((k, v) => MapEntry(k, v as String? ?? 'ok'));
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveNotice() async {
+    setState(() => _savingNotice = true);
+    try {
+      await ref.read(apiClientProvider).setSmsStatus(_noticeController.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notice saved — shown on the sign-in screen')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _savingNotice = false);
+    }
+  }
+
+  Future<void> _sendBroadcast() async {
+    final phones = _phoneController.text.trim();
+    final message = _messageController.text.trim();
+    if (phones.isEmpty || message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a phone number and a message.')),
+      );
+      return;
+    }
+    setState(() => _sending = true);
+    try {
+      final res = await ref.read(apiClientProvider).sendAdminSms(phones, message);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] as String? ?? 'SMS sent')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _sendGroup() async {
+    final message = _groupMessageController.text.trim();
+    if (message.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a message for the group.')),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send to group?'),
+        content: Text(
+          'Send to everyone in "${_groupOptions[_group] ?? _group}"? Each recipient gets one SMS from KSPONSOR.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _sendingGroup = true);
+    try {
+      final res = await ref.read(apiClientProvider).sendGroupSms(_group, message);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res['message'] as String? ?? 'Group SMS sent')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingGroup = false);
+    }
+  }
+
+  Future<void> _loadActivity() async {
+    setState(() => _loadingActivity = true);
+    try {
+      final events = await ref.read(apiClientProvider).getSmsActivity();
+      if (mounted) setState(() => _activity = events);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load SMS activity.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingActivity = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final admin = ref.watch(adminDataProvider);
     final theme = Theme.of(context);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Admin dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(LucideIcons.refreshCw),
-            onPressed: () => ref.invalidate(adminDataProvider),
-          ),
-        ],
-      ),
-       body: admin.when(
-         loading: () => const Center(child: AppIconSpinner()),
-        error: (e, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(friendlyError(e), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: () => ref.invalidate(adminDataProvider),
-                  child: const Text('Try again'),
-                ),
+                const Icon(LucideIcons.messageSquare, color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                Text('SMS tools', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
               ],
             ),
-          ),
-        ),
-        data: (data) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(adminDataProvider),
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            const SizedBox(height: 12),
+            const Text('Send an SMS to any number (in-app or outside).',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Phone number(s)',
+                hintText: '+260977123456 or comma-separated numbers',
+                prefixIcon: Icon(LucideIcons.phone, size: 18),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('Threat / intruder templates (tap to draft, then send)',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                SizedBox(
-                  height: 44,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      for (final (id, label, icon) in _sectionLabels)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8, top: 4, bottom: 4),
-                          child: ActionChip(
-                            avatar: Icon(icon, size: 14, color: AppColors.primary),
-                            label: Text(label),
-                            onPressed: () => _jumpTo(id),
-                          ),
-                        ),
-                    ],
+                for (final t in kThreatSmsTemplates)
+                  ActionChip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: Icon(t.icon, size: 13, color: AppColors.danger),
+                    label: Text(t.label, style: const TextStyle(fontSize: 11)),
+                    onPressed: () => setState(() => _messageController.text = t.text),
                   ),
-                ),
-                const SizedBox(height: 12),
-                    KeyedSubtree(
-                      key: _newKey('stats'),
-                      child: _StatGrid(stats: data.stats),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () => context.push('/admin/transactions'),
-                            icon: const Icon(LucideIcons.receipt, size: 18),
-                            label: const Text('Transactions'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () => context.push('/admin/disbursements'),
-                            icon: const Icon(LucideIcons.send, size: 18),
-                            label: const Text('Payouts & sweeps'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => context.push('/admin/campaigns'),
-                      icon: const AppBrandIcon(size: 18),
-                      label: const Text('Campaigns'),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => context.push('/admin/lipila-logs'),
-                      icon: const Icon(LucideIcons.list, size: 18),
-                      label: const Text('Lipila logs'),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () =>
-                                _downloadExport(context, '/api/admin/stats/export.csv', 'kingdom_sponsor_stats.csv'),
-                            icon: const Icon(LucideIcons.fileSpreadsheet, size: 18),
-                            label: const Text('Stats CSV'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: () =>
-                                _downloadExport(context, '/api/admin/stats/export.pdf', 'kingdom_sponsor_report.pdf'),
-                            icon: const Icon(LucideIcons.fileText, size: 18),
-                            label: const Text('PDF report'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () =>
-                          _downloadExport(context, '/api/admin/backup/export', 'kingdom_sponsor_backup.json'),
-                      icon: const Icon(LucideIcons.databaseBackup, size: 18),
-                      label: const Text('Download full backup (JSON)'),
-                    ),
-                    const SizedBox(height: 20),
-                    KeyedSubtree(
-                      key: _newKey('apps'),
-                      child: _ApplicationsSection(applications: data.applications),
-                    ),
-                    const SizedBox(height: 20),
-                    if (data.topCampaigns.isNotEmpty) ...[
-                      KeyedSubtree(
-                        key: _newKey('top'),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _SectionTitle(
-                              icon: LucideIcons.trophy,
-                              title: 'Top campaigns',
-                              trailing: Text(
-                                '${data.topCampaigns.length} shown',
-                                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Card(
-                              child: Column(
-                                children: [
-                                  for (final c in data.topCampaigns)
-                                    ListTile(
-                                      dense: true,
-                                      leading: ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: SizedBox(
-                                          width: 32,
-                                          height: 32,
-                                          child: CampaignImage(campaign: c, fit: BoxFit.cover),
-                                        ),
-                                      ),
-                                      title: Text(c.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                                      subtitle: Text('${formatKwacha(c.raisedCents)} of ${c.goalLabel}'),
-                                      trailing: Text(
-                                        '${(c.progress * 100).round()}%',
-                                        style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
-                                      ),
-                                      onTap: () => context.push('/campaign/${c.id}'),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (data.topDonors.isNotEmpty) ...[
-                      _SectionTitle(icon: LucideIcons.users, title: 'Top supporters'),
-                      const SizedBox(height: 8),
-                      Card(
-                        child: Column(
-                          children: [
-                            for (final d in data.topDonors)
-                              ListTile(
-                                dense: true,
-                                leading: Avatar(name: d.username, radius: 16),
-                                title: Text(d.username, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                trailing: Text(
-                                  formatKwacha(d.totalCents),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (data.topReferrers.isNotEmpty) ...[
-                      _SectionTitle(icon: LucideIcons.userPlus, title: 'Top referrers'),
-                      const SizedBox(height: 8),
-                      Card(
-                        child: Column(
-                          children: [
-                            for (final r in data.topReferrers)
-                              ListTile(
-                                dense: true,
-                                leading: Avatar(name: r.username, radius: 16),
-                                title: Text(r.username,
-                                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                                trailing: Text(
-                                  '${r.invites} invites',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                    if (data.recent.isNotEmpty) ...[
-                      _SectionTitle(icon: LucideIcons.receipt, title: 'Recent contributions'),
-                      const SizedBox(height: 8),
-                      Card(
-                        child: Column(
-                          children: [
-                            for (final r in data.recent)
-                              ListTile(
-                                dense: true,
-                                leading: const Icon(LucideIcons.coins, color: AppColors.primary, size: 20),
-                                title: Text('${r.username} • ${formatKwacha(r.amountCents)}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                                subtitle: Text('${r.campaignTitle}\n${r.date}'),
-                                isThreeLine: true,
-                                trailing: Text(
-                                  '+${formatKwacha(r.platformFeeCents)}',
-                                  style: const TextStyle(fontSize: 12, color: AppColors.primary),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    KeyedSubtree(
-                      key: _newKey('promos'),
-                      child: _PromotionsSection(),
-                    ),
-                    const SizedBox(height: 12),
-                    const _PromoConfigSection(),
-                    const SizedBox(height: 12),
-                    const AirtimeAdminConfig(),
-                    const SizedBox(height: 12),
-                    const BadgeAdminConfig(),
-                    const SizedBox(height: 12),
-                    KeyedSubtree(
-                      key: _newKey('tickets'),
-                      child: const _TicketsSection(),
-                    ),
-                    const SizedBox(height: 12),
-                    KeyedSubtree(
-                      key: _newKey('deletes'),
-                      child: const _DeleteRequestsSection(),
-                    ),
-                    const SizedBox(height: 12),
-                    const _MtnStatusSection(),
-                    const SizedBox(height: 12),
-                    const _FailedLoginsSection(),
-                    const SizedBox(height: 12),
-                    const _TelegramConfigSection(),
-                    const SizedBox(height: 12),
-                    const _BanSection(),
-                    const SizedBox(height: 12),
-                    const _PushStatusSection(),
               ],
             ),
-          ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _messageController,
+              maxLines: 3,
+              maxLength: 96,
+              decoration: const InputDecoration(
+                labelText: 'Message (max 96 chars = one SMS)',
+                alignLabelWithHint: true,
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 4),
+            FilledButton.icon(
+              onPressed: _sending ? null : _sendBroadcast,
+              icon: _sending
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(LucideIcons.send, size: 16),
+              label: Text(_sending ? 'Sending…' : 'Send SMS'),
+            ),
+            const Divider(height: 28),
+            const Text('Group broadcast (send to a filtered audience)',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _group,
+              items: [
+                for (final e in _groupOptions.entries)
+                  DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ],
+              onChanged: (v) => setState(() => _group = v ?? 'all_users'),
+              decoration: const InputDecoration(
+                labelText: 'Audience',
+                prefixIcon: Icon(LucideIcons.users, size: 18),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _groupMessageController,
+              maxLines: 3,
+              maxLength: 96,
+              decoration: const InputDecoration(
+                labelText: 'Group message (max 96 chars)',
+                alignLabelWithHint: true,
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 4),
+            OutlinedButton.icon(
+              onPressed: _sendingGroup ? null : _sendGroup,
+              icon: _sendingGroup
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(LucideIcons.megaphone, size: 16),
+              label: Text(_sendingGroup ? 'Sending to group…' : 'Send to group'),
+            ),
+            const Divider(height: 28),
+            const Text('Sign-in notice (tells users about outages without burning SMS)',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _noticeController,
+              maxLines: 3,
+              maxLength: 300,
+              decoration: const InputDecoration(
+                labelText: 'Notice text',
+                hintText: 'e.g. MTN SMS is temporarily down — you may not receive codes. Use WhatsApp instead.',
+                alignLabelWithHint: true,
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                for (final e in _netStatus.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Chip(
+                      label: Text(
+                        '${_networkLabel(e.key)}: ${e.value == 'down' ? 'DOWN' : 'OK'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: e.value == 'down' ? AppColors.danger : AppColors.primary,
+                        ),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: (e.value == 'down' ? AppColors.danger : AppColors.primary).withValues(alpha: 0.1),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            OutlinedButton.icon(
+              onPressed: _savingNotice ? null : _saveNotice,
+              icon: _savingNotice
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(LucideIcons.save, size: 16),
+              label: Text(_savingNotice ? 'Saving…' : 'Save notice'),
+            ),
+            const Divider(height: 28),
+            Row(
+              children: [
+                const Text('SMS delivery activity',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _loadingActivity ? null : _loadActivity,
+                  icon: const Icon(LucideIcons.refreshCw, size: 14),
+                  label: const Text('Refresh'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (_loadingActivity)
+              const LinearProgressIndicator()
+            else if (_activity.isEmpty)
+              Text('Tap Refresh to see recent SMS delivery reports.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted))
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 260),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _activity.length,
+                  itemBuilder: (context, i) {
+                    final e = _activity[i];
+                    final status = (e['status'] as String? ?? '').toString();
+                    final isFail = status.toLowerCase().contains('fail') || status.toLowerCase().contains('reject');
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        isFail ? LucideIcons.xCircle : LucideIcons.checkCircle,
+                        size: 18,
+                        color: isFail ? AppColors.danger : AppColors.primary,
+                      ),
+                      title: Text('${e['phone'] ?? ''} — $status',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                        '${e['kind'] ?? ''} • ${e['receivedAt'] ?? ''}\n${(e['payload'] as String? ?? '').replaceAll('\n', ' ')}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -427,6 +1285,7 @@ class _PromoConfigSection extends ConsumerStatefulWidget {
 class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
   int? _priceCents;
   int? _days;
+  int? _slots;
   bool _loading = true;
 
   @override
@@ -442,6 +1301,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
         setState(() {
           _priceCents = res['priceCents'] as int?;
           _days = res['days'] as int?;
+          _slots = res['slots'] as int? ?? 5;
           _loading = false;
         });
       }
@@ -454,6 +1314,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
     final priceController =
         TextEditingController(text: ((_priceCents ?? 15000) / 100).toStringAsFixed(0));
     final daysController = TextEditingController(text: '${_days ?? 7}');
+    final slotsController = TextEditingController(text: '${_slots ?? 5}');
     var saving = false;
 
     final ok = await showDialog<bool>(
@@ -471,7 +1332,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Price (K)',
-                      helperText: 'What hosts pay to reach the top-5',
+                      helperText: 'What hosts pay to reach the promoted slots',
                       prefixText: 'K ',
                     ),
                   ),
@@ -482,6 +1343,15 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
                     decoration: const InputDecoration(
                       labelText: 'Days (1-30)',
                       helperText: 'How long the promotion stays live',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: slotsController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Slots (1-20)',
+                      helperText: 'How many campaigns can be promoted at once',
                     ),
                   ),
                 ],
@@ -498,7 +1368,8 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
                   : () async {
                       final price = int.tryParse(priceController.text.trim());
                       final days = int.tryParse(daysController.text.trim());
-                      if (price == null || days == null) {
+                      final slots = int.tryParse(slotsController.text.trim());
+                      if (price == null || days == null || slots == null) {
                         ScaffoldMessenger.of(ctx).showSnackBar(
                           const SnackBar(content: Text('Enter valid numbers')),
                         );
@@ -508,7 +1379,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
                       try {
                         await ref
                             .read(apiClientProvider)
-                            .setPromotionConfig(price * 100, days);
+                            .setPromotionConfig(price * 100, days, slots: slots);
                         if (ctx.mounted) {
                           Navigator.pop(ctx, true);
                           ScaffoldMessenger.of(ctx).showSnackBar(
@@ -547,6 +1418,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
     if (ok == true) await _load();
     priceController.dispose();
     daysController.dispose();
+    slotsController.dispose();
   }
 
   @override
@@ -568,7 +1440,7 @@ class _PromoConfigSectionState extends ConsumerState<_PromoConfigSection> {
             Text(
               _loading
                   ? 'Loading…'
-                  : '${formatKwacha(_priceCents ?? 15000)} for ${_days ?? 7} days — Set by admin',
+                  : '${formatKwacha(_priceCents ?? 15000)} for ${_days ?? 7} days • ${_slots ?? 5} slots — Set by admin',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 10),
@@ -1134,6 +2006,10 @@ class _TicketsSectionState extends ConsumerState<_TicketsSection> {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (_tickets.isNotEmpty) ...[
+                      _countBadge(_tickets.length),
+                      const SizedBox(width: 6),
+                    ],
                     TextButton.icon(
                       onPressed: _editAssistantName,
                       icon: const Icon(LucideIcons.user, size: 14),
@@ -1402,7 +2278,16 @@ class _DeleteRequestsSectionState extends ConsumerState<_DeleteRequestsSection> 
           title: 'Campaign delete requests',
           trailing: _loading
               ? null
-              : TextButton(onPressed: _load, child: const Text('Refresh')),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_requests.isNotEmpty) ...[
+                      _countBadge(_requests.length),
+                      const SizedBox(width: 6),
+                    ],
+                    TextButton(onPressed: _load, child: const Text('Refresh')),
+                  ],
+                ),
         ),
         const SizedBox(height: 8),
         if (_loading)
@@ -1754,8 +2639,12 @@ class _PromotionsSection extends ConsumerWidget {
 
 class _StatGrid extends StatelessWidget {
   final AdminStats stats;
+  final AuthState? auth;
 
-  const _StatGrid({required this.stats});
+  const _StatGrid({required this.stats, this.auth});
+
+  bool _can(String scope) => auth?.canScope(scope) ?? false;
+  bool get _isAdmin => auth?.isAdmin ?? false;
 
   void _openTile(
     BuildContext context,
@@ -1787,14 +2676,15 @@ class _StatGrid extends StatelessWidget {
       crossAxisSpacing: 10,
       childAspectRatio: 1.6,
       children: [
-        _StatCard(
-          icon: LucideIcons.trophy,
-          label: 'Active campaigns',
-          value: '${stats.activeCampaigns}',
-          color: AppColors.primaryLight,
-          onTap: () => context.push('/admin/campaigns'),
-          info: 'Fundraisers currently open for donations. Tap to manage campaigns.',
-        ),
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.trophy,
+            label: 'Active campaigns',
+            value: '${stats.activeCampaigns}',
+            color: AppColors.primaryLight,
+            onTap: () => context.push('/admin/campaigns'),
+            info: 'Fundraisers currently open for donations. Tap to manage campaigns.',
+          ),
         _StatCard(
           icon: LucideIcons.walletCards,
           label: 'Total raised (active)',
@@ -1842,26 +2732,15 @@ class _StatGrid extends StatelessWidget {
           onTap: () => context.push('/admin/transactions'),
           info: 'Distinct people who completed at least one donation.',
         ),
-        _StatCard(
-          icon: LucideIcons.userPlus,
-          label: 'Users',
-          value: '${stats.usersTotal}',
-          color: AppColors.gold,
-          onTap: () => _openTile(
-            context,
-            AdminTileKind.users,
-            'Users',
-            LucideIcons.userPlus,
-            [
-              ('Total users', '${stats.usersTotal}'),
-              ('Approved hosts', '${stats.hostsTotal}'),
-              ('Distinct donors', '${stats.donors}'),
-              ('New (7 days)', '${stats.newUsers7d}'),
-              ('New (30 days)', '${stats.newUsers30d}'),
-            ],
+        if (_can('users'))
+          _StatCard(
+            icon: LucideIcons.userPlus,
+            label: 'Users',
+            value: '${stats.usersTotal}',
+            color: AppColors.gold,
+            onTap: () => context.push('/admin/users'),
+            info: 'Every phone number that verified with an SMS code. Tap for the full list by name & number.',
           ),
-          info: 'Every phone number that verified with an SMS code.',
-        ),
         _StatCard(
           icon: LucideIcons.coins,
           label: 'Processing fees',
@@ -1878,22 +2757,23 @@ class _StatGrid extends StatelessWidget {
           onTap: () => context.push('/admin/transactions'),
           info: 'Average amount raised per day.',
         ),
-        _StatCard(
-          icon: LucideIcons.hourglass,
-          label: 'Pending hosts',
-          value: '${stats.pendingApplications}',
-          color: AppColors.gold,
-          onTap: () => _openTile(
-            context,
-            AdminTileKind.applications,
-            'Host applications',
-            LucideIcons.hourglass,
-            [
-              ('Waiting for approval', '${stats.pendingApplications}'),
-            ],
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.hourglass,
+            label: 'Pending hosts',
+            value: '${stats.pendingApplications}',
+            color: AppColors.gold,
+            onTap: () => _openTile(
+              context,
+              AdminTileKind.applications,
+              'Host applications',
+              LucideIcons.hourglass,
+              [
+                ('Waiting for approval', '${stats.pendingApplications}'),
+              ],
+            ),
+            info: 'Host applications waiting for your approval.',
           ),
-          info: 'Host applications waiting for your approval.',
-        ),
         _StatCard(
           icon: LucideIcons.fileText,
           label: 'Receipts',
@@ -1918,74 +2798,99 @@ class _StatGrid extends StatelessWidget {
           ),
           info: 'Donors opted for monthly giving reminders.',
         ),
-        _StatCard(
-          icon: LucideIcons.messageCircle,
-          label: 'Open tickets',
-          value: '${stats.openTickets}',
-          color: stats.openTickets > 0 ? AppColors.danger : AppColors.primary,
-          onTap: () => _openTile(
-            context,
-            AdminTileKind.tickets,
-            'Support tickets',
-            LucideIcons.messageCircle,
-            [
-              ('Waiting for a reply', '${stats.openTickets}'),
-            ],
+        if (_can('tickets'))
+          _StatCard(
+            icon: LucideIcons.messageCircle,
+            label: 'Open tickets',
+            value: '${stats.openTickets}',
+            color: stats.openTickets > 0 ? AppColors.danger : AppColors.primary,
+            onTap: () => _openTile(
+              context,
+              AdminTileKind.tickets,
+              'Support tickets',
+              LucideIcons.messageCircle,
+              [
+                ('Waiting for a reply', '${stats.openTickets}'),
+              ],
+            ),
+            info: 'Support messages waiting for a reply.',
           ),
-          info: 'Support messages waiting for a reply.',
-        ),
-        _StatCard(
-          icon: LucideIcons.trash2,
-          label: 'Delete reqs',
-          value: '${stats.pendingDeleteRequests}',
-          color: stats.pendingDeleteRequests > 0
-              ? AppColors.danger
-              : AppColors.primaryLight,
-          onTap: () => _openTile(
-            context,
-            AdminTileKind.deleteRequests,
-            'Campaign deletion',
-            LucideIcons.trash2,
-            [
-              ('Pending approval', '${stats.pendingDeleteRequests}'),
-            ],
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.trash2,
+            label: 'Delete reqs',
+            value: '${stats.pendingDeleteRequests}',
+            color: stats.pendingDeleteRequests > 0
+                ? AppColors.danger
+                : AppColors.primaryLight,
+            onTap: () => _openTile(
+              context,
+              AdminTileKind.deleteRequests,
+              'Campaign deletion',
+              LucideIcons.trash2,
+              [
+                ('Pending approval', '${stats.pendingDeleteRequests}'),
+              ],
+            ),
+            info: 'Campaign deletion requests awaiting approval.',
           ),
-          info: 'Campaign deletion requests awaiting approval.',
-        ),
-        _StatCard(
-          icon: LucideIcons.gift,
-          label: 'Referral rewards',
-          value: '${stats.qualifiedReferrers}',
-          color: stats.qualifiedReferrers > 0
-              ? AppColors.primary
-              : AppColors.primaryLight,
-          onTap: () => _openTile(
-            context,
-            AdminTileKind.referrals,
-            'Referral rewards',
-            LucideIcons.gift,
-            [
-              ('Referrers waiting for reward', '${stats.qualifiedReferrers}'),
-            ],
+        if (_can('users'))
+          _StatCard(
+            icon: LucideIcons.gift,
+            label: 'Referral rewards',
+            value: '${stats.qualifiedReferrers}',
+            color: stats.qualifiedReferrers > 0
+                ? AppColors.primary
+                : AppColors.primaryLight,
+            onTap: () => _openTile(
+              context,
+              AdminTileKind.referrals,
+              'Referral rewards',
+              LucideIcons.gift,
+              [
+                ('Referrers waiting for reward', '${stats.qualifiedReferrers}'),
+              ],
+            ),
+            info: 'Users who reached the referral target and are waiting to be '
+                'rewarded by you. Tap to reward them.',
           ),
-          info: 'Users who reached the referral target and are waiting to be '
-              'rewarded by you. Tap to reward them.',
-        ),
-        _StatCard(
-          icon: LucideIcons.userCog,
-          label: 'Staff & restore',
-          value: '${stats.assistants}',
-          color: AppColors.primary,
-          onTap: () => context.push('/admin/staff'),
-          info: 'Manage assistant admins, restore deleted campaigns, review the audit log.',
-        ),
-        _StatCard(
-          icon: LucideIcons.pencil,
-          label: 'Edit requests',
-          value: '${stats.pendingEditRequests}',
-          color: stats.pendingEditRequests > 0 ? AppColors.primary : AppColors.primaryLight,
-          onTap: () => context.push('/admin/edit-requests'),
-          info: 'Host-submitted campaign changes awaiting your approval.',
+        if (_isAdmin)
+          _StatCard(
+            icon: LucideIcons.userCog,
+            label: 'Staff & restore',
+            value: '${stats.assistants}',
+            color: AppColors.primary,
+            onTap: () => context.push('/admin/staff'),
+            info: 'Manage assistant admins, restore deleted campaigns, review the audit log.',
+          ),
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.pencil,
+            label: 'Edit requests',
+            value: '${stats.pendingEditRequests}',
+            color: stats.pendingEditRequests > 0 ? AppColors.primary : AppColors.primaryLight,
+            onTap: () => context.push('/admin/edit-requests'),
+            info: 'Host-submitted campaign changes awaiting your approval.',
+          ),
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.megaphone,
+            label: 'Updates to review',
+            value: '${stats.pendingAnnouncements}',
+            color: stats.pendingAnnouncements > 0 ? AppColors.primary : AppColors.primaryLight,
+            onTap: () => context.push('/admin/announcements'),
+            info: 'Host-posted updates waiting for your approval. Approving publishes '
+                'them on the campaign/event page and pushes a notification to every donor.',
+          ),
+        if (_can('campaigns'))
+          _StatCard(
+            icon: LucideIcons.calendarDays,
+            label: 'Events analytics',
+          value: '${stats.activeEvents}',
+          color: stats.ticketsSold > 0 ? AppColors.primary : AppColors.primaryLight,
+          onTap: () => context.push('/admin/events'),
+          info: 'Ticket sales, revenue, sell-through and RSVPs for events — kept '
+              'separate from campaigns. Tap for the full breakdown.',
         ),
       ],
     );
@@ -2046,22 +2951,27 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 20, color: color),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.88, end: 1),
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutBack,
+      builder: (context, t, child) => Transform.scale(scale: t, child: child),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20, color: color),
                 if (info != null) ...[
                   const SizedBox(width: 6),
                   GestureDetector(
@@ -2097,6 +3007,7 @@ class _StatCard extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -2126,6 +3037,50 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+/// Compact badge text for a user's host status on list rows.
+String _hostBadgeLabel(String status) {
+  switch (status) {
+    case 'approved':
+      return 'Host';
+    case 'pending':
+      return 'Host pending';
+    case 'rejected':
+      return 'Host rejected';
+    default:
+      return 'Giver';
+  }
+}
+
+/// A small count pill shown in section headers ("{n}").
+Widget _countBadge(int count) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      '$count',
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary),
+    ),
+  );
+}
+
+String _networkLabel(String id) {
+  switch (id) {
+    case 'airtel':
+      return 'Airtel';
+    case 'mtn':
+      return 'MTN';
+    case 'zamtel':
+      return 'Zamtel';
+    case 'zedmobile':
+      return 'ZedMobile';
+    default:
+      return id;
+  }
+}
+
 class _ApplicationsSection extends ConsumerWidget {
   final List<HostApplication> applications;
 
@@ -2137,7 +3092,11 @@ class _ApplicationsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(icon: LucideIcons.userCheck, title: 'Host applications'),
+        _SectionTitle(
+          icon: LucideIcons.userCheck,
+          title: 'Host applications',
+          trailing: _countBadge(applications.length),
+        ),
         const SizedBox(height: 8),
         if (applications.isEmpty)
           Padding(
@@ -2313,11 +3272,23 @@ class _FailedLoginsSectionState extends ConsumerState<_FailedLoginsSection> {
   List<dynamic> _logs = [];
   bool _loading = true;
   String? _error;
+  bool _scanEnabled = false;
+  bool _scanLoading = true;
+  bool _testing = false;
+  final _emailController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadScanConfig();
+    _loadEmailConfig();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -2331,6 +3302,75 @@ class _FailedLoginsSectionState extends ConsumerState<_FailedLoginsSection> {
       if (mounted) setState(() => _error = 'Could not load.');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadScanConfig() async {
+    try {
+      final res = await ref.read(apiClientProvider).getIntruderAlert();
+      if (mounted) setState(() { _scanEnabled = res['enabled'] == true; _scanLoading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _scanLoading = false);
+    }
+  }
+
+  Future<void> _loadEmailConfig() async {
+    try {
+      final res = await ref.read(apiClientProvider).getEmailConfig();
+      if (mounted) {
+        final email = res['email'] as String? ?? '';
+        setState(() { _emailController.text = email; });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _toggleScan(bool v) async {
+    setState(() => _scanEnabled = v);
+    try {
+      await ref.read(apiClientProvider).setIntruderAlert(v);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(v ? 'Intruder-alert scan enabled' : 'Intruder-alert scan disabled')),
+        );
+      }
+    } catch (e) {
+      setState(() => _scanEnabled = !v);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    }
+  }
+
+  Future<void> _saveEmail() async {
+    try {
+      await ref.read(apiClientProvider).setEmailConfig(_emailController.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Alert email saved')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    }
+  }
+
+  Future<void> _testAlert() async {
+    setState(() => _testing = true);
+    try {
+      final res = await ref.read(apiClientProvider).testIntruderAlert();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Test alert sent (Telegram: ${res['telegramSent']}, SMS: ${res['smsSent']}, Email: ${res['emailSent']})')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
     }
   }
 
@@ -2351,9 +3391,60 @@ class _FailedLoginsSectionState extends ConsumerState<_FailedLoginsSection> {
                   'Failed login attempts',
                   style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
+                const Spacer(),
+                if (!_scanLoading)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_scanEnabled ? 'Scan ON' : 'Scan OFF',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: _scanEnabled ? AppColors.primary : AppColors.textMuted)),
+                      Switch(value: _scanEnabled, onChanged: _toggleScan),
+                    ],
+                  ),
               ],
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Failed sign-ins are pushed to Telegram bots + SMS/email every 15 minutes.',
+              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 8),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Alert email (optional)',
+                hintText: 'admin@example.com',
+                prefixIcon: Icon(LucideIcons.mail, size: 16),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _saveEmail,
+                    icon: const Icon(LucideIcons.save, size: 14),
+                    label: const Text('Save email'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _testing ? null : _testAlert,
+                    icon: _testing
+                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(LucideIcons.zap, size: 14),
+                    label: const Text('Send test alert'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             _loading
                 ? const LinearProgressIndicator()
                 : _error != null
@@ -2396,7 +3487,7 @@ class _FailedLoginsSectionState extends ConsumerState<_FailedLoginsSection> {
   }
 }
 
-/// Superadmin-editable Telegram intruder-alert channel (bot token + chat id).
+/// Superadmin-editable Telegram team bots (multiple, all get intruder alerts).
 class _TelegramConfigSection extends ConsumerStatefulWidget {
   const _TelegramConfigSection();
 
@@ -2405,11 +3496,10 @@ class _TelegramConfigSection extends ConsumerStatefulWidget {
 }
 
 class _TelegramConfigSectionState extends ConsumerState<_TelegramConfigSection> {
-  final _tokenController = TextEditingController();
-  final _chatController = TextEditingController();
+  List<Map<String, dynamic>> _bots = [];
   bool _loading = true;
   bool _saving = false;
-  bool _configured = false;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -2417,19 +3507,14 @@ class _TelegramConfigSectionState extends ConsumerState<_TelegramConfigSection> 
     _load();
   }
 
-  @override
-  void dispose() {
-    _tokenController.dispose();
-    _chatController.dispose();
-    super.dispose();
-  }
-
   Future<void> _load() async {
     try {
       final res = await ref.read(apiClientProvider).getTelegramConfig();
       if (mounted) {
         setState(() {
-          _configured = res['configured'] == true;
+          _bots = (res['bots'] as List<dynamic>? ?? [])
+              .map((b) => Map<String, dynamic>.from(b as Map))
+              .toList();
           _loading = false;
         });
       }
@@ -2438,25 +3523,59 @@ class _TelegramConfigSectionState extends ConsumerState<_TelegramConfigSection> 
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _saveBots() async {
     setState(() => _saving = true);
     try {
-      await ref.read(apiClientProvider).setTelegramConfig(
-            token: _tokenController.text.trim(),
-            chatId: _chatController.text.trim(),
-          );
+      final cleaned = _bots
+          .map((b) => {
+                'token': (b['token'] as String? ?? '').trim(),
+                'chatId': (b['chatId'] as String? ?? '').trim(),
+                if ((b['label'] as String? ?? '').trim().isNotEmpty)
+                  'label': (b['label'] as String? ?? '').trim(),
+              })
+          .where((b) => (b['token'] as String).isNotEmpty && (b['chatId'] as String).isNotEmpty)
+          .toList();
+      final res = await ref.read(apiClientProvider).put('/api/admin/telegram-config', {
+        'bots': cleaned,
+      }, auth: true);
       if (mounted) {
+        setState(() {
+          _bots = (res['bots'] as List<dynamic>? ?? [])
+              .map((b) => Map<String, dynamic>.from(b as Map))
+              .toList();
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Telegram alert channel saved')),
+          SnackBar(content: Text('Saved ${_bots.length} Telegram bot${_bots.length == 1 ? '' : 's'}')),
         );
       }
-      await _load();
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _testBots() async {
+    setState(() => _testing = true);
+    try {
+      final res = await ref.read(apiClientProvider).testTelegramBots();
+      final results = res['results'] as List<dynamic>? ?? [];
+      final msgs = results
+          .map((r) => '${r['label'] ?? r['chatId']}: ${r['ok'] == true ? 'OK' : r['error'] ?? 'failed'}')
+          .join('\n');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(results.isEmpty ? 'No bots configured.' : msgs)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _testing = false);
     }
   }
 
@@ -2480,59 +3599,115 @@ class _TelegramConfigSectionState extends ConsumerState<_TelegramConfigSection> 
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: _configured ? AppColors.primary.withValues(alpha: 0.12) : AppColors.gold.withValues(alpha: 0.15),
+                      color: _bots.isNotEmpty ? AppColors.primary.withValues(alpha: 0.12) : AppColors.gold.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      _configured ? 'Active' : 'Not set',
+                      _bots.isNotEmpty ? '${_bots.length} bot${_bots.length == 1 ? '' : 's'}' : 'Not set',
                       style: TextStyle(
                           fontSize: 11, fontWeight: FontWeight.w800,
-                          color: _configured ? AppColors.primary : AppColors.gold),
+                          color: _bots.isNotEmpty ? AppColors.primary : AppColors.gold),
                     ),
                   ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'Intruder alerts and critical events are also sent to this Telegram chat (on top of SMS + push).',
+              'Intruder alerts and critical events are sent to EVERY team bot (on top of SMS + push). Add one bot per teammate.',
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _tokenController,
-              decoration: const InputDecoration(
-                labelText: 'Bot token',
-                hintText: '123456:ABC-DEF...',
-                prefixIcon: Icon(LucideIcons.key, size: 16),
+            if (_loading)
+              const LinearProgressIndicator()
+            else ...[
+              for (int i = 0; i < _bots.length; i++) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        decoration: InputDecoration(
+                          labelText: 'Bot ${i + 1} — token',
+                          hintText: '123456:ABC-DEF...',
+                          isDense: true,
+                        ),
+                        obscureText: true,
+                        initialValue: _bots[i]['token'] as String? ?? '',
+                        onChanged: (v) => setState(() => _bots[i]['token'] = v),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: 'Remove bot',
+                      icon: const Icon(LucideIcons.x, size: 18, color: AppColors.danger),
+                      onPressed: () => setState(() => _bots.removeAt(i)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        decoration: InputDecoration(
+                          labelText: 'Chat ID',
+                          hintText: '-1001234567890',
+                          isDense: true,
+                        ),
+                        initialValue: _bots[i]['chatId'] as String? ?? '',
+                        onChanged: (v) => setState(() => _bots[i]['chatId'] = v),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: TextFormField(
+                        decoration: const InputDecoration(
+                          labelText: 'Label (e.g. "Godfrey")',
+                          isDense: true,
+                        ),
+                        initialValue: _bots[i]['label'] as String? ?? '',
+                        onChanged: (v) => setState(() => _bots[i]['label'] = v),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _bots.add({'token': '', 'chatId': '', 'label': ''})),
+                icon: const Icon(LucideIcons.plus, size: 16),
+                label: const Text('Add another bot'),
               ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _chatController,
-              decoration: const InputDecoration(
-                labelText: 'Chat ID',
-                hintText: '-1001234567890',
-                prefixIcon: Icon(LucideIcons.hash, size: 16),
+              const SizedBox(height: 4),
+              Text(
+                'How to: create a bot via @BotFather, then message it and open '
+                'https://api.telegram.org/bot<TOKEN>/getUpdates to find your chat id.',
+                style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'How to: create a bot via @BotFather, then message it and open '
-              'https://api.telegram.org/bot<TOKEN>/getUpdates to find your chat id.',
-              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 11),
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(LucideIcons.save, size: 16),
-                label: Text(_saving ? 'Saving…' : 'Save Telegram channel'),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _saveBots,
+                      icon: _saving
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(LucideIcons.save, size: 16),
+                      label: Text(_saving ? 'Saving…' : 'Save bots'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _testing ? null : _testBots,
+                      icon: _testing
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(LucideIcons.zap, size: 16),
+                      label: Text(_testing ? 'Testing…' : 'Test bots'),
+                    ),
+                  ),
+                ],
               ),
-            ),
+            ],
           ],
         ),
       ),
