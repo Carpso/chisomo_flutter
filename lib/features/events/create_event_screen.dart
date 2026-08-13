@@ -202,8 +202,16 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
           final bytes = await _logo!.readAsBytes();
           await api.uploadLogo(eventId, bytes, _logo!.name);
         } catch (_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event created, but the poster upload failed.')));
+          // Try once more — transient network or gateway blips are common.
+          try {
+            final bytes = await _logo!.readAsBytes();
+            await api.uploadLogo(eventId, bytes, _logo!.name);
+          } catch (uploadErr) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Event created, but the poster upload failed: $uploadErr')),
+              );
+            }
           }
         }
       }

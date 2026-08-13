@@ -395,17 +395,15 @@ class ApiClient {
       '$_baseUrl/api/contributions/$contributionId/receipt?token=$token';
 
   /// Uploads a campaign logo (multipart). [bytes] is the raw image data.
+  /// MIME is detected from the actual bytes (JPEG/PNG/WebP magic numbers) so
+  /// bundled/gallery images upload with the right content type regardless of
+  /// the filename extension.
   Future<Map<String, dynamic>> uploadLogo(
     int campaignId,
     List<int> bytes,
     String filename,
   ) async {
-    final ext = filename.split('.').last.toLowerCase();
-    final mime = switch (ext) {
-      'png' => MediaType('image', 'png'),
-      'webp' => MediaType('image', 'webp'),
-      _ => MediaType('image', 'jpeg'),
-    };
+    final mime = _detectImageMime(bytes, filename);
     final req =
         http.MultipartRequest(
             'POST',
@@ -424,6 +422,28 @@ class ApiClient {
       () => req.send().then((s) => http.Response.fromStream(s)),
     );
     return _decode(res);
+  }
+
+  /// Detects the image content type from the leading magic bytes, falling back
+  /// to the filename extension. Ensures JPEG/PNG/WebP upload correctly.
+  static MediaType _detectImageMime(List<int> bytes, String filename) {
+    if (bytes.length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+      return MediaType('image', 'png');
+    }
+    if (bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+      return MediaType('image', 'jpeg');
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+        bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
+      return MediaType('image', 'webp');
+    }
+    final ext = filename.split('.').last.toLowerCase();
+    return switch (ext) {
+      'png' => MediaType('image', 'png'),
+      'webp' => MediaType('image', 'webp'),
+      _ => MediaType('image', 'jpeg'),
+    };
   }
 
   /// Host: upload a KYC document (NRC / NGO cert / endorsement) to R2.

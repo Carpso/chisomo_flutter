@@ -96,4 +96,5 @@
 - **Restore list aligned** — deleted-campaigns items rebuilt as `Card + ListTile` (consistent icon/title/button alignment) in `admin_staff_screen.dart`.
 - **Admin shield on Events tab** — the admin guard button (shield icon) now also appears on the Events tab for staff, so assistants see it wherever they are.
 - **Donor emails list** — card donations/ticket purchases now store the payer email on `contributions` (migration_v43); `GET /api/admin/emails` (donations scope) lists confirmed donor emails with giving totals; admin dashboard "Donor emails" tile → `AdminEmailsScreen` with search + one-tap copy.
+- **Event tier create fixed** — `parseEventTiers` now accepts BOTH a JSON string and an already-parsed array (the app sends an array). Previously `JSON.parse(String(array))` mangled arrays → tiers were silently dropped on create/admin-edit. Verified live (event tiers round-trip). Poster upload now detects MIME from image bytes (JPEG/PNG/WebP magic numbers) + retries once.
 
