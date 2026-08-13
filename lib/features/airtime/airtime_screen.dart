@@ -446,6 +446,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
   List<dynamic> _orders = [];
   bool _loadingOrders = false;
   final Set<int> _busy = {};
+  String _provider = 'manual';
 
   @override
   void initState() {
@@ -456,6 +457,11 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
   Future<void> _load() async {
     try {
       final res = await ref.read(apiClientProvider).get('/api/airtime/config');
+      String provider = 'manual';
+      try {
+        final prov = await ref.read(apiClientProvider).get('/api/airtime/providers');
+        provider = (prov['current'] as String?) ?? 'manual';
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _enabled = res['enabled'] == true;
@@ -463,6 +469,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
           _minAmount = res['minAmountCents'] as int? ?? 500;
           _maxAmount = res['maxAmountCents'] as int? ?? 50000;
           _bonus = res['bonusPct'] as int? ?? 5;
+          _provider = provider;
         });
       }
     } catch (_) {}
@@ -591,23 +598,32 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
     }
   }
 
-  /// Sends a real K1 top-up to a test number to verify the Africa's Talking
-  /// airtime keys are working end-to-end.
+  /// Sends a real K1 top-up to a test number to verify the configured
+  /// airtime provider is working end-to-end.
   Future<void> _testAirtime() async {
     final phoneController = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Test airtime keys'),
+        title: const Text('Test airtime delivery'),
         content: SingleChildScrollView(
           padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Sends a real K1 airtime top-up to verify the Africa\'s Talking '
-                'purchase keys work. This costs K1 on your AT account.',
+              Text(
+                _provider == 'manual'
+                    ? 'Airtime is in manual mode — no supplier is wired up yet. '
+                        'Set the AIRTIME_PROVIDER + credentials on the worker, '
+                        'then use this test to verify delivery.'
+                    : _provider == 'mtn_momo'
+                        ? 'Sends a real K1 airtime top-up via MTN Mobile Money to '
+                            'verify the MTN MoMo keys work. This costs K1 on your '
+                            'MTN MoMo airtime account.'
+                        : 'Sends a real K1 airtime top-up via Africa\'s Talking to '
+                            'verify the AT airtime keys work. This costs K1 on your '
+                            'AT account.',
                 style: TextStyle(fontSize: 13, height: 1.4),
               ),
               const SizedBox(height: 12),
@@ -657,7 +673,7 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Airtime test failed. Check the AT credentials.')),
+          const SnackBar(content: Text('Airtime test failed. Check the provider credentials.')),
         );
       }
     } finally {
@@ -685,6 +701,29 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
             ),
             const SizedBox(height: 8),
             Text(_enabled ? 'Enabled — users can buy airtime' : 'Disabled — shows "Coming Soon"', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _provider == 'mtn_momo'
+                    ? Colors.amber.withValues(alpha: 0.15)
+                    : _provider == 'manual'
+                        ? AppColors.textMuted.withValues(alpha: 0.12)
+                        : Colors.blue.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(LucideIcons.server, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Provider: ${_providerLabel(_provider)}',
+                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             Text('Markup: $_markup% (added on top of the airtime value)', style: theme.textTheme.bodySmall),
             Slider(value: _markup.toDouble(), min: 0, max: 20, divisions: 20, label: '$_markup%', onChanged: (v) => setState(() => _markup = v.round())),
@@ -735,7 +774,11 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Verifies the Africa\'s Talking airtime credentials with a real K1 top-up.',
+              _provider == 'manual'
+                  ? 'No supplier wired up yet — orders queue for manual fulfilment.'
+                  : _provider == 'mtn_momo'
+                      ? 'Verifies the MTN Mobile Money airtime credentials with a real K1 top-up.'
+                      : 'Verifies the Africa\'s Talking airtime credentials with a real K1 top-up.',
               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
             ),
             const Divider(height: 28),
@@ -819,5 +862,16 @@ class _AirtimeAdminConfigState extends ConsumerState<AirtimeAdminConfig> {
         ),
       ),
     );
+  }
+
+  String _providerLabel(String id) {
+    switch (id) {
+      case 'mtn_momo':
+        return 'MTN Mobile Money';
+      case 'africastalking':
+        return 'Africa\'s Talking';
+      default:
+        return 'Manual fulfilment';
+    }
   }
 }
