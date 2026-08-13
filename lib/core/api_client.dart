@@ -945,6 +945,16 @@ class ApiClient {
     return get('/api/admin/users?${query.join('&')}', auth: true);
   }
 
+  /// Admin: list donor emails captured on card contributions.
+  Future<Map<String, dynamic>> getAdminEmails({
+    String q = '',
+    int limit = 200,
+  }) {
+    final query = <String>['limit=$limit'];
+    if (q.trim().isNotEmpty) query.add('q=${Uri.encodeQueryComponent(q.trim())}');
+    return get('/api/admin/emails?${query.join('&')}', auth: true);
+  }
+
   /// Admin: add or update an assistant's permission scopes.
   Future<Map<String, dynamic>> saveAssistant(
     int userId, {

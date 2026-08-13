@@ -94,4 +94,6 @@
 - **Payments QA** — `moneyRef()` (fees.ts) appends a random suffix to every money reference (`CON-`, `PAY-`, `REF-`, `PRO-`, `AIR-`, …) so same-ms collisions can't corrupt webhook idempotency; `confirmContribution` enforces event capacity atomically in the confirm UPDATE (a late ticket payment when the event just sold out is failed + host alerted, never oversold). Test suites: `src/__tests__/fees.test.ts`, `webhook-idempotency.test.ts` (backend, 35 tests) and `test/money_test.dart`, `test/fx_test.dart` (Flutter, 26 tests).
 - **K0.48 fixed fee** — platform flat fee is ZMW 0.48 (backend was already 48); all Flutter strings/fallbacks updated from 0.24.
 - **Restore list aligned** — deleted-campaigns items rebuilt as `Card + ListTile` (consistent icon/title/button alignment) in `admin_staff_screen.dart`.
+- **Admin shield on Events tab** — the admin guard button (shield icon) now also appears on the Events tab for staff, so assistants see it wherever they are.
+- **Donor emails list** — card donations/ticket purchases now store the payer email on `contributions` (migration_v43); `GET /api/admin/emails` (donations scope) lists confirmed donor emails with giving totals; admin dashboard "Donor emails" tile → `AdminEmailsScreen` with search + one-tap copy.
 

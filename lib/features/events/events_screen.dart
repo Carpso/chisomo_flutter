@@ -28,6 +28,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
     final campaigns = ref.watch(campaignsProvider);
     final auth = ref.watch(authControllerProvider).value;
     final isApprovedHost = auth?.hostStatus == 'approved';
+    final isStaff = auth?.isStaff ?? false;
     final views = ref.watch(campaignViewsProvider).value ?? const <Campaign>[];
 
     return Scaffold(
@@ -42,6 +43,12 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
           child: Text('Events', maxLines: 1),
         ),
         actions: [
+          if (isStaff)
+            IconButton(
+              icon: const Icon(LucideIcons.shieldCheck),
+              tooltip: 'Admin dashboard',
+              onPressed: () => context.push('/admin'),
+            ),
           if (isApprovedHost)
             IconButton(
               icon: const Icon(LucideIcons.qrCode),

@@ -2732,6 +2732,16 @@ class _StatGrid extends StatelessWidget {
           onTap: () => context.push('/admin/transactions'),
           info: 'Distinct people who completed at least one donation.',
         ),
+        if (_can('donations'))
+          _StatCard(
+            icon: LucideIcons.mail,
+            label: 'Donor emails',
+            value: '${stats.cardEmails}',
+            color: stats.cardEmails > 0 ? AppColors.primary : AppColors.primaryLight,
+            onTap: () => context.push('/admin/emails'),
+            info: 'Emails captured from card donors and card ticket buyers. '
+                'Tap for the full list with giving totals — copy any email in one tap.',
+          ),
         if (_can('users'))
           _StatCard(
             icon: LucideIcons.userPlus,

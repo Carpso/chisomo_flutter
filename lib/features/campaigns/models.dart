@@ -678,6 +678,7 @@ class AdminStats {
   final int ticketsSold;
   final int ticketsSoldValueCents;
   final int pendingAnnouncements;
+  final int cardEmails;
 
   const AdminStats({
     required this.totalRaisedCents,
@@ -711,6 +712,7 @@ class AdminStats {
     this.ticketsSold = 0,
     this.ticketsSoldValueCents = 0,
     this.pendingAnnouncements = 0,
+    this.cardEmails = 0,
   });
 
   factory AdminStats.fromJson(Map<String, dynamic> j) => AdminStats(
@@ -745,6 +747,7 @@ class AdminStats {
     ticketsSold: j['ticketsSold'] as int? ?? 0,
     ticketsSoldValueCents: j['ticketsSoldValueCents'] as int? ?? 0,
     pendingAnnouncements: j['pendingAnnouncements'] as int? ?? 0,
+    cardEmails: j['cardEmails'] as int? ?? 0,
   );
 }
 

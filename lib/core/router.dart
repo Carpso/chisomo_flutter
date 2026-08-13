@@ -18,6 +18,7 @@ import '../features/events/event_detail_screen.dart';
 import '../features/events/buy_ticket_screen.dart';
 import '../features/events/admin_events_screen.dart';
 import '../features/admin/admin_announcements_screen.dart';
+import '../features/admin/admin_emails_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/search/global_search_screen.dart';
 import '../features/team/team_chat_screen.dart';
@@ -392,6 +393,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               final canUsers = authAsync.value?.canScope('users') ?? false;
               if (!canUsers) return const CampaignListScreen();
               return const AdminUsersScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/emails',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canDonations = authAsync.value?.canScope('donations') ?? false;
+              if (!canDonations) return const CampaignListScreen();
+              return const AdminEmailsScreen();
             },
           ),
           GoRoute(
