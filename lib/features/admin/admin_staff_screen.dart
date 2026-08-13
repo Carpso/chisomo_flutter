@@ -20,7 +20,12 @@ const kAssistantScopeLabels = <String, String>{
 /// Admin screen: manage assistant admins with scoped permissions, restore
 /// soft-deleted campaigns, and review the admin action audit log.
 class AdminStaffScreen extends ConsumerStatefulWidget {
-  const AdminStaffScreen({super.key});
+  /// When true, the "Add assistant" dialog opens automatically once loaded.
+  /// Used by the team chat's "Add team member" action so it lands directly
+  /// on the add flow instead of the Staff & Restore overview.
+  final bool startWithAdd;
+
+  const AdminStaffScreen({super.key, this.startWithAdd = false});
 
   @override
   ConsumerState<AdminStaffScreen> createState() => _AdminStaffScreenState();
@@ -33,11 +38,25 @@ class _AdminStaffScreenState extends ConsumerState<AdminStaffScreen> {
   bool _loading = true;
   String? _error;
   int _tab = 0;
+  bool _autoOpened = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.startWithAdd && !_autoOpened && !_loading) {
+      _autoOpened = true;
+      // Auto-open the add-assistant dialog once the data is ready, so the
+      // team chat's "Add team member" lands directly on the add flow.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _addAssistant();
+      });
+    }
   }
 
   Future<void> _load() async {

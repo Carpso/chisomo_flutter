@@ -106,11 +106,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (!mounted) return;
       final err = res['error'] as String?;
       final msg = res['message'] as String?;
+      final sent = (res['sentCount'] as num?)?.toInt() ?? 0;
       if (err != null && res['ok'] == false) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg ?? 'Test push sent — check your notification shade.')),
+          SnackBar(
+            content: Text(
+              sent == 0
+                  ? 'Notification recorded in-app, but your phone has no registered '
+                      'device token yet — open the app fully and check notification permission, then try again.'
+                  : (msg ?? 'Test push sent — check your notification shade.'),
+            ),
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } on ApiException catch (e) {

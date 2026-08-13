@@ -133,8 +133,8 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
 
   Future<void> _donate() async {
     final amountCents = _amountCents;
-    if (amountCents < 100) {
-      setState(() => _error = 'Enter an amount of at least K1.');
+    if (amountCents < 500) {
+      setState(() => _error = 'Enter an amount of at least K5.');
       return;
     }
     final phone = _phoneE164;
@@ -236,7 +236,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
     _pollTimer?.cancel();
     var polls = 0;
     var consecutiveErrors = 0;
-    final maxPolls = _method == _PaymentMethod.card ? 160 : 40; // card: ~8 min
+    final maxPolls = _method == _PaymentMethod.card ? 240 : 100; // MoMo ~5 min, card ~12 min
     const maxConsecutiveErrors = 5;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       polls++;
@@ -561,7 +561,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
         ValueListenableBuilder<TextEditingValue>(
           valueListenable: _amountController,
           builder: (context, _, _) =>
-              _amountCents >= 100 ? _buildFeeCard(context, detail?.fees) : const SizedBox.shrink(),
+              _amountCents >= 500 ? _buildFeeCard(context, detail?.fees) : const SizedBox.shrink(),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -653,7 +653,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
           ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
-          onPressed: (_submitting || _amountCents < 100) ? null : _donate,
+          onPressed: (_submitting || _amountCents < 500) ? null : _donate,
           icon: _submitting
               ? const SizedBox.shrink()
               : Icon(
@@ -670,7 +670,7 @@ class _DonateScreenState extends ConsumerState<DonateScreen> {
               : Text(
                   _method == _PaymentMethod.card
                       ? 'Continue to secure checkout'
-                      : 'Donate ${_amountCents >= 100 ? formatKwacha(_amountCents) : ''}',
+                      : 'Donate ${_amountCents >= 500 ? formatKwacha(_amountCents) : ''}',
                 ),
         ),
         const SizedBox(height: 8),

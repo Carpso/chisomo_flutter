@@ -15,6 +15,11 @@ import '../firebase_options.dart';
 /// Set from main.dart once the Riverpod container is available.
 void Function(String route)? onNotificationOpen;
 
+/// Called whenever a notification is received or opened (foreground, background
+/// or tap). main.dart wires this to refresh the unread-count badge so the bell
+/// updates live without waiting for a manual refresh.
+void Function()? onNotificationReceived;
+
 /// Buffered route captured from a cold-start notification tap (getInitialMessage
 /// / local-notification replay) that fires before main.dart has wired
 /// [onNotificationOpen]. Flushed the moment the handler is assigned so the
@@ -28,6 +33,7 @@ void _deliver(String route) {
   } else {
     _pendingInitialRoute = route;
   }
+  onNotificationReceived?.call();
 }
 
 /// Wires the notification-tap handler and flushes any route captured during
@@ -38,6 +44,10 @@ void setNotificationOpenHandler(void Function(String route) handler) {
   _pendingInitialRoute = null;
   if (pending != null) handler(pending);
 }
+
+/// Callback for the unread-count badge. main.dart assigns this so the bell
+/// refreshes the moment a new notification lands in the foreground.
+void Function()? notifyBadgeRefresh; // set by main.dart
 
 final FlutterLocalNotificationsPlugin _localNotifications =
     FlutterLocalNotificationsPlugin();
@@ -163,6 +173,8 @@ Future<void> initPushService() async {
   // so mirror the message as a local notification.
   FirebaseMessaging.onMessage.listen((message) {
     _showLocal(message.notification, message.data);
+    // A new notification just landed — refresh the bell badge live.
+    notifyBadgeRefresh?.call();
   });
 
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -176,6 +188,8 @@ Future<void> initPushService() async {
 void _open(Map<String, dynamic> data) {
   final route = _routeFromData(data);
   if (route != null) _deliver(route);
+  // The tapped notification is usually still unread — refresh the badge.
+  notifyBadgeRefresh?.call();
 }
 
 /// Requests the notification permission. On Android this prompts for the

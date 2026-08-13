@@ -372,6 +372,19 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
+            path: '/admin/staff/add',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canRestore = authAsync.value?.canScope('restore') ?? false;
+              if (!canRestore) return const CampaignListScreen();
+              // Opens Staff & Restore already on the Add-assistant flow, so
+              // team chat's "Add team member" adds an assistant (team member)
+              // instead of landing on the wrong screen.
+              return const AdminStaffScreen(startWithAdd: true);
+            },
+          ),
+          GoRoute(
             path: '/admin/users',
             builder: (context, state) {
               final authAsync = ref.watch(authControllerProvider);

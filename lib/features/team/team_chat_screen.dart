@@ -155,18 +155,18 @@ class _TeamChatScreenState extends ConsumerState<TeamChatScreen> {
       appBar: AppBar(
         title: Text(_roomName),
         actions: [
-          if (ref.watch(authControllerProvider).value?.isAdmin == true) ...[
+          if (ref.watch(authControllerProvider).value?.canScope('restore') == true)
             IconButton(
               tooltip: 'Add team member',
               icon: const Icon(LucideIcons.userPlus, size: 18),
-              onPressed: () => context.push('/admin/staff'),
+              onPressed: () => context.push('/admin/staff/add'),
             ),
+          if (ref.watch(authControllerProvider).value?.canScope('settings') == true)
             IconButton(
               tooltip: 'Rename room',
               icon: const Icon(LucideIcons.pencil, size: 18),
               onPressed: _renameRoom,
             ),
-          ],
           IconButton(icon: const Icon(LucideIcons.refreshCw), onPressed: _load),
         ],
       ),

@@ -114,7 +114,8 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
         ),
         data: (d) => _EventBody(
           detail: d,
-          onRsvp: d.campaign.isEvent || d.campaign.isSoldOut ? null : _rsvp,
+          // Ticketed events buy tickets (never RSVP); free events RSVP.
+          onRsvp: d.campaign.isTicketedEvent || d.campaign.isSoldOut ? null : _rsvp,
           rsvpBusy: _rsvpBusy,
         ),
       ),
@@ -253,16 +254,16 @@ class _EventBody extends ConsumerWidget {
                           _EventRow(LucideIcons.calendarDays, 'When', c.eventDate!),
                         if (c.eventVenue != null)
                           _EventRow(LucideIcons.mapPin, 'Where', c.eventVenue!),
-                        if (c.eventCapacity > 0)
+                        if (c.isTicketedEvent)
                           _EventRow(
                             LucideIcons.ticket,
                             'Tickets',
-                            '${c.ticketsSold}/${c.eventCapacity} sold',
+                            c.eventCapacity > 0
+                                ? '${c.ticketsSold}/${c.eventCapacity} sold'
+                                : '${c.ticketsSold} sold',
                             valueColor: c.isSoldOut ? AppColors.danger : null,
-                          )
-                        else if (c.isEvent)
-                          _EventRow(LucideIcons.ticket, 'Tickets', '${c.ticketsSold} sold'),
-                        if (!c.isEvent)
+                          ),
+                        if (!c.isTicketedEvent)
                           _EventRow(
                             LucideIcons.users,
                             'Going',
@@ -365,7 +366,7 @@ class _EventBody extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: c.isEvent
+                  child: c.isTicketedEvent
                       ? ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),

@@ -92,6 +92,11 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
     setNotificationOpenHandler((route) {
       if (mounted) ref.read(pendingDeepLinkProvider.notifier).set(route);
     });
+    // Refresh the bell badge the moment a notification arrives so the unread
+    // count is always live (not just after a manual pull-to-refresh).
+    notifyBadgeRefresh = () {
+      if (mounted) ref.invalidate(unreadNotificationsProvider);
+    };
     DeepLinks.init((uri) {
       if (uri.scheme != 'kingdomsponsor' || !mounted) return;
       final refCode = uri.queryParameters['ref'];
@@ -114,6 +119,9 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
       ref.invalidate(campaignsProvider);
       // Re-register push token to handle silent FCM token rotation.
       refreshPushTokenIfNeeded();
+      // Fresh unread count so the bell badge is correct after a background
+      // notification was delivered while the app was away.
+      ref.invalidate(unreadNotificationsProvider);
     }
   }
 

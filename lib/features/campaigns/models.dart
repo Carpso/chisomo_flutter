@@ -184,7 +184,14 @@ class Campaign {
 
   bool get isPrivate => visibility == 'private';
 
-  bool get isEvent => eventTiers.isNotEmpty;
+  /// True when the campaign is an event (ticketed tiers OR the event type).
+  /// Mirrors the backend's `isEventLike` so a ticketed event whose tiers failed
+  /// to parse still routes to the event/buy-ticket flow instead of RSVP.
+  bool get isEvent => eventTiers.isNotEmpty || campaignType == 'event';
+
+  /// Events that sell tickets (have tiers) use the Buy Ticket button; events
+  /// with no tiers are free and use RSVP instead.
+  bool get isTicketedEvent => isEvent && eventTiers.isNotEmpty;
 
   bool get isSoldOut => eventCapacity > 0 && ticketsSold >= eventCapacity;
 

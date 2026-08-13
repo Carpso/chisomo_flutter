@@ -48,6 +48,37 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
               tooltip: 'Scan & check in',
               onPressed: () => context.push('/admin/scan-qr'),
             ),
+          Consumer(
+            builder: (context, ref, _) {
+              final unread = ref.watch(unreadNotificationsProvider);
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(LucideIcons.bell),
+                    tooltip: 'Notifications',
+                    onPressed: () => context.push('/notifications'),
+                  ),
+                  if ((unread.value ?? 0) > 0)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${unread.value}',
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(LucideIcons.search),
             tooltip: 'Global search',
@@ -324,23 +355,24 @@ class _EventPost extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Poster carousel.
-          SizedBox(
-            height: 320,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                GestureDetector(
-                  onTap: () => context.push('/event/${c.id}'),
-                  child: PageView.builder(
+          // Poster carousel. The whole poster (image, scrim and caption) is
+          // tappable and opens the event detail; the PageView still handles
+          // horizontal swipes between posters.
+          GestureDetector(
+            onTap: () => context.push('/event/${c.id}'),
+            child: SizedBox(
+              height: 320,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PageView.builder(
                     itemCount: posters.length,
                     itemBuilder: (context, i) => Hero(
                       tag: 'event-image-${c.id}-$i',
                       child: CampaignImage(campaign: posters[i], fit: BoxFit.cover),
                     ),
                   ),
-                ),
                 DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -431,6 +463,7 @@ class _EventPost extends ConsumerWidget {
               ],
             ),
           ),
+        ),
           // Post body.
           Padding(
             padding: const EdgeInsets.all(14),
@@ -463,20 +496,32 @@ class _EventPost extends ConsumerWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '${c.ticketsSold} ${c.ticketsSold == 1 ? 'ticket' : 'tickets'} sold'
-                        '${c.eventCapacity > 0 ? ' of ${c.eventCapacity}' : ''}',
-                        style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-                      ),
+                      child: c.isTicketedEvent
+                          ? Text(
+                              '${c.ticketsSold} ${c.ticketsSold == 1 ? 'ticket' : 'tickets'} sold'
+                              '${c.eventCapacity > 0 ? ' of ${c.eventCapacity}' : ''}',
+                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                            )
+                          : Text(
+                              '${c.rsvpCount} ${c.rsvpCount == 1 ? 'RSVP' : 'RSVPs'}',
+                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                            ),
                     ),
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
-                      onPressed: c.isSoldOut
-                          ? null
-                          : () => context.push('/event/${c.id}/buy-ticket'),
-                      icon: const Icon(LucideIcons.ticket, size: 15),
-                      label: Text(c.isSoldOut ? 'Sold out' : 'Buy ticket'),
-                    ),
+                    c.isTicketedEvent
+                        ? FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
+                            onPressed: c.isSoldOut
+                                ? null
+                                : () => context.push('/event/${c.id}/buy-ticket'),
+                            icon: const Icon(LucideIcons.ticket, size: 15),
+                            label: Text(c.isSoldOut ? 'Sold out' : 'Buy ticket'),
+                          )
+                        : FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
+                            onPressed: () => context.push('/event/${c.id}'),
+                            icon: const Icon(LucideIcons.calendarCheck, size: 15),
+                            label: const Text('RSVP'),
+                          ),
                     const SizedBox(width: 8),
                     IconButton(
                       tooltip: 'Share event',

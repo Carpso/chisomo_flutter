@@ -138,7 +138,10 @@ class _BuyTicketScreenState extends ConsumerState<BuyTicketScreen> {
   void _pollStatus() {
     _pollTimer?.cancel();
     var polls = 0;
-    final maxPolls = _method == _PaymentMethod.card ? 160 : 40;
+    // Card checkout can take a while; MoMo prompts also need time for the
+    // user to notice the prompt and enter their PIN (Lipila status-check may
+    // not settle for ~90s). Keep polling generously instead of failing fast.
+    final maxPolls = _method == _PaymentMethod.card ? 240 : 100;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       polls++;
       if (polls > maxPolls) {
