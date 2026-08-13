@@ -132,8 +132,12 @@ class _LiveDonorFeedState extends ConsumerState<LiveDonorFeed> {
                     children: [
                       Text('${d['name'] ?? 'Anonymous'}',
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
-                      Text(formatKwacha(d['amountCents'] as int? ?? 0),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.gold)),
+                      Text(
+                        d['hidden'] == true
+                            ? '•••'
+                            : formatKwacha(d['amountCents'] as int? ?? 0),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.gold),
+                      ),
                     ],
                   ),
                 );
@@ -187,7 +191,7 @@ class _LiveToggleButtonState extends ConsumerState<LiveToggleButton> {
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
           : Icon(widget.currentlyLive ? LucideIcons.radio : LucideIcons.video, size: 16,
               color: widget.currentlyLive ? AppColors.danger : AppColors.primary),
-      label: Text(widget.currentlyLive ? 'End live' : 'Go live', style: const TextStyle(fontSize: 13)),
+      label: Text(widget.currentlyLive ? 'End Live' : 'Go Live', style: const TextStyle(fontSize: 13)),
       style: widget.currentlyLive
           ? OutlinedButton.styleFrom(foregroundColor: AppColors.danger)
           : null,

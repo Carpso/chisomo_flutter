@@ -262,10 +262,10 @@ class _DetailBody extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       InfoBadge(
-                        title: 'Go live',
-                        text: 'Go live starts a live donor feed on this page and shows a '
+                        title: 'Go Live',
+                        text: 'Go Live starts a live donor feed on this page and shows a '
                             '"LIVE" badge. Only the host or an admin can turn it on. While live, '
-                            'new donations appear on the screen in real time. Tap "End live" '
+                            'new donations appear on the screen in real time. Tap "End Live" '
                             'anytime to stop it.',
                       ),
                     ],

@@ -97,4 +97,8 @@
 - **Admin shield on Events tab** — the admin guard button (shield icon) now also appears on the Events tab for staff, so assistants see it wherever they are.
 - **Donor emails list** — card donations/ticket purchases now store the payer email on `contributions` (migration_v43); `GET /api/admin/emails` (donations scope) lists confirmed donor emails with giving totals; admin dashboard "Donor emails" tile → `AdminEmailsScreen` with search + one-tap copy.
 - **Event tier create fixed** — `parseEventTiers` now accepts BOTH a JSON string and an already-parsed array (the app sends an array). Previously `JSON.parse(String(array))` mangled arrays → tiers were silently dropped on create/admin-edit. Verified live (event tiers round-trip). Poster upload now detects MIME from image bytes (JPEG/PNG/WebP magic numbers) + retries once.
+- **Event notifications worded as events** — ticket confirmations now push "Ticket confirmed" / "New ticket sold" (buyer + host + admins) instead of "Gift confirmed" / "New gift received"; "New event posted" / "Event updated" replace the campaign wording for event campaigns.
+- **Live feed respects donor privacy** — `/api/campaigns/:id/live/donations` returns `hidden: true` + `amountCents: null` for donors who chose "Hide the amount" (app renders •••); anonymous donors still show "Anonymous".
+- **Go Live casing + admin/team event delete** — the toggle now says "Go Live" / "End Live"; event detail shows a delete (trash) action for staff with `campaigns` scope.
+- **Dashboard speed** — `AdminController` runs stats/applications/campaigns in parallel (`Future.wait`); backend campaign-public loops parallelized with `Promise.all`/`allSettled` (admin campaigns ~23s → ~3s, campaigns list ~10s → ~1.3s).
 

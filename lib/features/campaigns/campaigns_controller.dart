@@ -195,10 +195,15 @@ class AdminController extends AsyncNotifier<AdminData> {
   @override
   Future<AdminData> build() async {
     final api = ref.read(apiClientProvider);
-    final stats = await api.get('/api/admin/stats', auth: true);
-    final apps = await api.get('/api/admin/applications', auth: true);
-    final campaigns = await api.get('/api/admin/campaigns', auth: true);
-    return AdminData.fromJson(stats, apps, campaigns);
+    // Run the three admin requests in parallel — the stats + applications +
+    // campaigns endpoints each take a few seconds, so sequential awaits would
+    // keep the dashboard spinner up for the sum of all three.
+    final results = await Future.wait([
+      api.get('/api/admin/stats', auth: true),
+      api.get('/api/admin/applications', auth: true),
+      api.get('/api/admin/campaigns', auth: true),
+    ]);
+    return AdminData.fromJson(results[0], results[1], results[2]);
   }
 
   Future<void> refresh() async {

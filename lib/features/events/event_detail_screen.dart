@@ -72,6 +72,38 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
     }
   }
 
+  Future<void> _confirmDelete(BuildContext context, Campaign campaign) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete event?'),
+        content: Text('"${campaign.title}" will be removed from Kingdom Sponsor. '
+            'Donors and ticket holders will be alerted. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete event'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      final res = await ref.read(apiClientProvider).deleteCampaign(campaign.id);
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(res['message'] as String? ?? 'Event deleted')),
+      );
+      context.go('/events');
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final detail = ref.watch(campaignDetailProvider(widget.eventId));
@@ -89,6 +121,16 @@ class _EventDetailScreenState extends ConsumerState<EventDetailScreen> {
               await showShareSheet(context, ref, d.campaign);
             },
           ),
+          if (ref.watch(authControllerProvider).value?.canScope('campaigns') == true)
+            IconButton(
+              icon: const Icon(LucideIcons.trash2),
+              tooltip: 'Delete event',
+              onPressed: () async {
+                final d = detail.value;
+                if (d == null) return;
+                await _confirmDelete(context, d.campaign);
+              },
+            ),
         ],
       ),
       body: detail.when(
@@ -304,11 +346,11 @@ class _EventBody extends ConsumerWidget {
                         ),
                         const SizedBox(width: 8),
                         InfoBadge(
-                          title: 'Go live',
-                          text: 'Go live starts a live donor feed on this event page and shows a '
+                          title: 'Go Live',
+                          text: 'Go Live starts a live donor feed on this event page and shows a '
                               '"LIVE" badge. Only the host or an admin can turn it on. While live, '
                               'new donations and ticket sales appear on the screen in real time. '
-                              'Tap "End live" anytime to stop it.',
+                              'Tap "End Live" anytime to stop it.',
                         ),
                       ],
                     ),
