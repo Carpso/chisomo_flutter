@@ -13,6 +13,7 @@ import '../../core/widgets/app_icon_spinner.dart';
 import '../auth/auth_controller.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
+import '../events/event_categories.dart';
 
 /// Bundled sample campaign images hosts can pick without having a photo.
 /// Both the original gradient samples and the `_real` CC0/public-domain photos
@@ -590,11 +591,13 @@ class _CreateCampaignScreenState extends ConsumerState<CreateCampaignScreen> {
               prefixIcon: Icon(LucideIcons.tags, size: 18),
             ),
             child: DropdownButton<String>(
-              value: kCampaignCategories.contains(_category) ? _category : 'Other',
+              value: _isEvent
+                  ? (kEventCategories.contains(_category) ? _category : 'Other')
+                  : (kCampaignCategories.contains(_category) ? _category : 'Other'),
               isExpanded: true,
               underline: const SizedBox.shrink(),
               items: [
-                for (final c in kSortedCategories)
+                for (final c in (_isEvent ? kSortedEventCategories : kSortedCategories))
                   DropdownMenuItem(value: c, child: Text(c)),
               ],
               onChanged: (v) {

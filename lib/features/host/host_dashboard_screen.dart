@@ -187,6 +187,58 @@ class HostDashboardScreen extends ConsumerWidget {
                 icon: const Icon(LucideIcons.calendarClock, size: 18, color: AppColors.primary),
                 label: const Text('Monthly giving pledges'),
               ),
+              if (data.user.hostStatus == 'approved') ...[
+                const SizedBox(height: 10),
+                Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => context.push('/sponsor-desk'),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.primary.withValues(alpha: 0.12),
+                            AppColors.gold.withValues(alpha: 0.10),
+                          ],
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(LucideIcons.briefcase, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Sponsor Desk',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'New grants & funding opportunities for your campaign',
+                                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(LucideIcons.chevronRight, size: 18, color: AppColors.textMuted),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               Text(
                 data.campaigns.any((c) => c.isEvent)

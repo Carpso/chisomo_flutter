@@ -48,6 +48,8 @@ import '../features/admin/admin_edit_requests_screen.dart';
 import '../features/admin/admin_staff_screen.dart';
 import '../features/admin/admin_users_screen.dart';
 import '../features/admin/transaction_detail_screen.dart';
+import '../features/sponsor_desk/sponsor_desk_screen.dart';
+import '../features/admin/admin_sponsor_desk_screen.dart';
 
 /// A `kingdomsponsor://campaign/<id>` deep link waiting to be opened after
 /// the user finishes signing in.
@@ -117,6 +119,7 @@ String? deepLinkToRoute(String? value) {
   if (segs.isEmpty) return null;
   const known = {
     'campaign', 'event', 'donate', 'pledges', 'settings', 'host', 'airtime', 'admin',
+    'sponsor-desk',
   };
   if (!known.contains(segs.first)) return null;
   return path;
@@ -355,6 +358,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const HostBadgeScreen(),
           ),
           GoRoute(
+            path: '/sponsor-desk',
+            builder: (context, state) => const SponsorDeskScreen(),
+          ),
+          GoRoute(
             path: '/admin',
             builder: (context, state) {
               final authAsync = ref.watch(authControllerProvider);
@@ -435,6 +442,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               final canCampaigns = authAsync.value?.canScope('campaigns') ?? false;
               if (!canCampaigns) return const CampaignListScreen();
               return const AdminEditRequestsScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/sponsor-desk',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canSettings = authAsync.value?.canScope('settings') ?? false;
+              if (!canSettings) return const CampaignListScreen();
+              return const AdminSponsorDeskScreen();
             },
           ),
           GoRoute(

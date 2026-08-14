@@ -43,6 +43,45 @@ class CampaignsController extends AsyncNotifier<List<Campaign>> {
 final campaignsProvider =
     AsyncNotifierProvider<CampaignsController, List<Campaign>>(CampaignsController.new);
 
+/// Events feed — fetches ONLY events (`?type=events`); the backend keeps events
+/// and campaigns completely separate so they never mix in one list.
+class EventsController extends AsyncNotifier<List<Campaign>> {
+  static const _cacheKey = 'events_list';
+
+  @override
+  Future<List<Campaign>> build() async {
+    final api = ref.read(apiClientProvider);
+    final cache = ref.read(offlineCacheProvider);
+    try {
+      final res = await api.get('/api/campaigns?type=events');
+      await cache.write(_cacheKey, res);
+      ref.read(offlineModeProvider.notifier).set(false);
+      return _parse(res);
+    } on ApiException {
+      final cached = await cache.read(_cacheKey);
+      if (cached == null) rethrow;
+      ref.read(offlineModeProvider.notifier).set(true);
+      return _parse(cached);
+    }
+  }
+
+  static List<Campaign> _parse(Map<String, dynamic> res) {
+    return (res['campaigns'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((c) => Campaign.fromJson(Map<String, dynamic>.from(c)))
+        .where((c) => c.id > 0 && (c.isEvent || c.campaignType == 'event'))
+        .toList();
+  }
+
+  Future<void> refresh() async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => build());
+  }
+}
+
+final eventsProvider =
+    AsyncNotifierProvider<EventsController, List<Campaign>>(EventsController.new);
+
 class CampaignDetailController extends AsyncNotifier<CampaignDetail> {
   CampaignDetailController(this.campaignId);
 

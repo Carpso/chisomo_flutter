@@ -1010,6 +1010,38 @@ class ApiClient {
     return delete('/api/admin/sample-images?url=${Uri.encodeQueryComponent(url)}', auth: true);
   }
 
+  /// Public: active funding opportunities on the Sponsor Desk.
+  Future<List<dynamic>> getSponsorDesk() async {
+    final res = await get('/api/sponsor-desk');
+    return res['opportunities'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: full Sponsor Desk list (drafts, published, archived).
+  Future<List<dynamic>> getAdminSponsorDesk() async {
+    final res = await get('/api/admin/sponsor-desk', auth: true);
+    return res['opportunities'] as List<dynamic>? ?? [];
+  }
+
+  /// Admin: create or update an opportunity (draft by default).
+  Future<Map<String, dynamic>> saveSponsorDesk(Map<String, dynamic> body) {
+    return post('/api/admin/sponsor-desk', body, auth: true);
+  }
+
+  /// Admin: publish selected opportunities to active hosts (push + in-app).
+  Future<Map<String, dynamic>> publishSponsorDesk(List<int> ids) {
+    return post('/api/admin/sponsor-desk/publish', {'ids': ids}, auth: true);
+  }
+
+  /// Admin: set an opportunity's status (active | archived).
+  Future<Map<String, dynamic>> setSponsorDeskStatus(int id, String status) {
+    return post('/api/admin/sponsor-desk/$id/status', {'status': status}, auth: true);
+  }
+
+  /// Admin: delete an opportunity permanently.
+  Future<Map<String, dynamic>> deleteSponsorDesk(int id) {
+    return delete('/api/admin/sponsor-desk/$id', auth: true);
+  }
+
   /// Admin: add or update an assistant's permission scopes.
   Future<Map<String, dynamic>> saveAssistant(
     int userId, {

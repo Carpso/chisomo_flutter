@@ -87,7 +87,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             children: [
               Text(n['body'] as String? ?? '', style: const TextStyle(height: 1.4)),
               const SizedBox(height: 10),
-              Text(safeDate(n['createdAt']),
+              Text(safeDateTime(n['createdAt']),
                   style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
             ],
           ),
@@ -108,6 +108,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       context.push('/settings/referrals');
     } else if (type == 'airtime_delivered') {
       context.push('/airtime');
+    } else if (type == 'sponsor_desk') {
+      context.push('/sponsor-desk');
     } else if (type == 'new_user' || type == 'admin_alert' || type == 'host_application' || type == 'donation' || type == 'broadcast') {
       context.push('/admin');
     }
@@ -143,6 +145,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         return LucideIcons.star;
       case 'referral_rewarded':
         return LucideIcons.gift;
+      case 'sponsor_desk':
+        return LucideIcons.briefcase;
       case 'new_user':
       case 'host_application':
       case 'admin_alert':
@@ -249,7 +253,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                                 ),
                               ),
                               subtitle: Text(
-                                '${n['body'] ?? ''}\n${safeDate(n['createdAt'])}',
+                                '${n['body'] ?? ''}\n${safeDateTime(n['createdAt'])}',
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textMuted, fontSize: 12),

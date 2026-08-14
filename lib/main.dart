@@ -11,6 +11,7 @@ import 'core/push_service.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'core/widgets/app_widgets.dart';
+import 'core/widgets/notification_overlay.dart';
 import 'core/fx_service.dart';
 import 'core/l10n.dart';
 import 'features/campaigns/campaigns_controller.dart';
@@ -154,7 +155,7 @@ class _KingdomSponsorAppState extends ConsumerState<KingdomSponsorApp> with Widg
           child: Column(
             children: [
               if (isTestMode) const TestModeBanner(),
-              Expanded(child: child ?? const SizedBox.shrink()),
+              Expanded(child: NotificationOverlay(child: child ?? const SizedBox.shrink())),
             ],
           ),
         );

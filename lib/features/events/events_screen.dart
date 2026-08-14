@@ -25,7 +25,7 @@ class EventsScreen extends ConsumerStatefulWidget {
 class _EventsScreenState extends ConsumerState<EventsScreen> {
   @override
   Widget build(BuildContext context) {
-    final campaigns = ref.watch(campaignsProvider);
+    final eventsAsync = ref.watch(eventsProvider);
     final auth = ref.watch(authControllerProvider).value;
     final isApprovedHost = auth?.hostStatus == 'approved';
     final isStaff = auth?.isStaff ?? false;
@@ -102,14 +102,14 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
               label: const Text('Create event'),
             )
           : null,
-      body: campaigns.when(
+      body: eventsAsync.when(
         loading: () => const Center(child: AppIconSpinner()),
         error: (e, _) => _ErrorRetry(
           message: friendlyError(e),
-          onRetry: () => ref.invalidate(campaignsProvider),
+          onRetry: () => ref.invalidate(eventsProvider),
         ),
         data: (items) {
-          final events = items.where((c) => c.isEvent || c.campaignType == 'event').toList();
+          final events = items;
           if (events.isEmpty && views.where((c) => c.isEvent || c.campaignType == 'event').isEmpty) {
             return const _EmptyEvents();
           }
@@ -124,7 +124,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
           final private = opened.where((c) => c.isPrivate).toList();
           return RefreshIndicator(
             onRefresh: () async {
-              ref.invalidate(campaignsProvider);
+              ref.invalidate(eventsProvider);
               ref.invalidate(campaignViewsProvider);
             },
             child: CustomScrollView(

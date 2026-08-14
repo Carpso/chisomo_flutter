@@ -14,6 +14,7 @@ import '../../core/widgets/app_icon_spinner.dart';
 import '../campaigns/campaign_image.dart';
 import '../campaigns/campaigns_controller.dart';
 import '../campaigns/models.dart';
+import '../events/event_categories.dart';
 import '../host/create_campaign_screen.dart';
 
 class AdminCampaignsScreen extends ConsumerStatefulWidget {
@@ -145,8 +146,10 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
       text: campaign.endsAt != null ? safeDate(campaign.endsAt) : '',
     );
     String status = campaign.status;
-    String category =
-        kCampaignCategories.contains(campaign.category) ? campaign.category : 'Other';
+    final isEditEvent = campaign.isEvent || campaign.campaignType == 'event';
+    String category = isEditEvent
+        ? (kEventCategories.contains(campaign.category) ? campaign.category : 'Other')
+        : (kCampaignCategories.contains(campaign.category) ? campaign.category : 'Other');
     String visibility = campaign.visibility == 'private' ? 'private' : 'public';
     String campaignType =
         kCampaignTypes.containsKey(campaign.campaignType) ? campaign.campaignType : 'community';
@@ -329,7 +332,7 @@ class _AdminCampaignsScreenState extends ConsumerState<AdminCampaignsScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: category,
-                    items: kSortedCategories
+                    items: (isEditEvent ? kSortedEventCategories : kSortedCategories)
                         .map((c) => DropdownMenuItem(
                               value: c,
                               child: Text(c),

@@ -290,6 +290,35 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                               ),
                             ),
                           const SizedBox(height: 12),
+                          if (_can('settings'))
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.briefcase, color: AppColors.primary, size: 20),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Sponsor Desk',
+                                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                          Text('Curate grants & opportunities, publish weekly to hosts',
+                                              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    FilledButton.icon(
+                                      onPressed: () => context.push('/admin/sponsor-desk'),
+                                      icon: const Icon(LucideIcons.send, size: 15),
+                                      label: const Text('Manage'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(14),

@@ -11,7 +11,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
 import '../campaigns/campaigns_controller.dart';
-import '../campaigns/models.dart';
+import 'event_categories.dart';
 
 /// Online sample event poster images (picsum.photos, no key) grouped by theme.
 const kEventSampleImages = <({String label, String url})>[
@@ -73,7 +73,7 @@ const kEventTemplates = <_EventTemplate>[
     title: 'Live Worship Concert',
     description: 'A powerful night of worship and praise raising funds for [cause]. '
         'Come experience great music, testimonies and a community that gives together.',
-    category: 'Music & Worship',
+    category: 'Concert & Worship Night',
   ),
   _EventTemplate(
     label: 'Church Conference',
@@ -81,7 +81,7 @@ const kEventTemplates = <_EventTemplate>[
     title: 'Annual Church Conference',
     description: 'Our annual gathering of believers — teaching, fellowship and outreach. '
         'Ticket sales help cover the venue and support our community programmes.',
-    category: 'Church & Ministry',
+    category: 'Conference & Seminar',
   ),
   _EventTemplate(
     label: 'Charity Walk',
@@ -89,7 +89,7 @@ const kEventTemplates = <_EventTemplate>[
     title: 'Community Charity Walk',
     description: 'Walk with us for [cause]! Register a ticket to join the walk and '
         'help us reach our fundraising goal. All proceeds go directly to the community.',
-    category: 'Community Development',
+    category: 'Charity Run & Walk',
     ticketed: false,
   ),
   _EventTemplate(
@@ -98,7 +98,7 @@ const kEventTemplates = <_EventTemplate>[
     title: 'Youth Empowerment Day',
     description: 'A day of inspiration, mentorship and fun for young people. '
         'Ticket sales fund our youth programmes and skills training.',
-    category: 'Youth & Sports',
+    category: 'Youth Event',
   ),
   _EventTemplate(
     label: 'Medical Fundraiser',
@@ -106,7 +106,7 @@ const kEventTemplates = <_EventTemplate>[
     title: 'Medical Fundraising Event',
     description: 'A community gathering to raise funds for urgent medical expenses. '
         'Every contribution brings us closer to the goal.',
-    category: 'Medical & Health',
+    category: 'Gala & Fundraising Dinner',
   ),
 ];
 
@@ -356,11 +356,11 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
           InputDecorator(
             decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(LucideIcons.tags, size: 18)),
             child: DropdownButton<String>(
-              value: kCampaignCategories.contains(_category) ? _category : 'Other',
+              value: kEventCategories.contains(_category) ? _category : 'Other',
               isExpanded: true,
               underline: const SizedBox.shrink(),
               items: [
-                for (final c in kSortedCategories) DropdownMenuItem(value: c, child: Text(c)),
+                for (final c in kSortedEventCategories) DropdownMenuItem(value: c, child: Text(c)),
               ],
               onChanged: (v) {
                 if (v != null) setState(() => _category = v);
