@@ -1069,6 +1069,16 @@ class ApiClient {
     return put('/api/admin/milestone-config', {'thresholds': thresholds}, auth: true);
   }
 
+  /// Admin: get non-transactional SMS-alerts config.
+  Future<Map<String, dynamic>> getSmsAlerts() {
+    return get('/api/admin/sms-alerts', auth: true);
+  }
+
+  /// Admin: set non-transactional SMS-alerts config (master + per category).
+  Future<Map<String, dynamic>> setSmsAlerts(Map<String, bool> config) {
+    return put('/api/admin/sms-alerts', config, auth: true);
+  }
+
   /// Admin: add or update an assistant's permission scopes.
   Future<Map<String, dynamic>> saveAssistant(
     int userId, {
