@@ -147,6 +147,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         return LucideIcons.gift;
       case 'sponsor_desk':
         return LucideIcons.briefcase;
+      case 'chat':
+        return LucideIcons.messageCircle;
       case 'new_user':
       case 'host_application':
       case 'admin_alert':

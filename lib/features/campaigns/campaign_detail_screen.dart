@@ -12,6 +12,7 @@ import '../../core/widgets/info_badge.dart';
 import '../auth/auth_controller.dart';
 import '../events/event_detail_screen.dart';
 import 'announcements_section.dart';
+import 'campaign_chat_section.dart';
 import 'campaigns_controller.dart';
 import 'campaign_image.dart';
 import 'live_overlay.dart';
@@ -614,6 +615,9 @@ class _DetailBody extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 20),
+        CampaignChatSection(campaignId: c.id),
+        const SizedBox(height: 20),
         SafeArea(
           top: false,
           child: Padding(

@@ -1191,6 +1191,17 @@ class ApiClient {
     return get('/api/contributions/status/$referenceId');
   }
 
+  /// Campaign/event chat: fetch recent messages (auth).
+  Future<List<dynamic>> getCampaignChat(int campaignId) async {
+    final res = await get('/api/campaigns/$campaignId/chat', auth: true);
+    return res['messages'] as List<dynamic>? ?? [];
+  }
+
+  /// Campaign/event chat: post a message.
+  Future<Map<String, dynamic>> postCampaignChat(int campaignId, String body) {
+    return post('/api/campaigns/$campaignId/chat', {'body': body}, auth: true);
+  }
+
   /// Runs a request with a timeout and surfaces network failures as [ApiException]
   /// so the UI can show a clear message instead of hanging or silently failing.
   /// Also picks up sliding-session refresh tokens issued by the server.

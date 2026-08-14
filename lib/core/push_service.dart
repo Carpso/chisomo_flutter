@@ -71,6 +71,7 @@ const _chPayments = 'payments';
 const _chAdmin = 'admin';
 const _chPromotions = 'promotions';
 const _chSponsorDesk = 'sponsor_desk';
+const _chChat = 'chat';
 const _chBroadcast = 'broadcast';
 const _chReferrals = 'referrals';
 const _chHost = 'host';
@@ -98,6 +99,8 @@ const _allChannels = [
       'Promotion status: active, expired, refunded'),
   _ChannelSpec(_chSponsorDesk, 'Sponsor Desk',
       'Curated grant & empowerment opportunities'),
+  _ChannelSpec(_chChat, 'Chat',
+      'Messages in your campaign and event conversations'),
   _ChannelSpec(_chBroadcast, 'Broadcasts',
       'Messages from the Kingdom Sponsor team'),
   _ChannelSpec(_chReferrals, 'Referrals',
@@ -165,6 +168,8 @@ String _channelForType(String? type) {
       return _chPromotions;
     case 'sponsor_desk':
       return _chSponsorDesk;
+    case 'chat':
+      return _chChat;
     case 'broadcast':
       return _chBroadcast;
     case 'referral_rewarded':
