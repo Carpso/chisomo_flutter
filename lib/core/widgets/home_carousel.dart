@@ -272,8 +272,7 @@ class _HomeCarouselState extends ConsumerState<HomeCarousel> {
                             style: TextStyle(
                                 fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textDark)),
                       ],
-                    ),
-                  ),
+                    ),                  ),
                 ),
                 Positioned(
                   left: 14,

@@ -717,7 +717,7 @@ class _AdminCampaignTile extends StatelessWidget {
                         if (c.isPrivate) _miniChip('Private', AppColors.textMuted),
                         if (c.waivePayoutFees) _miniChip('Fees waived', AppColors.gold),
                         if (c.isEvent) _miniChip('${c.eventTiers.length} ticket tiers', AppColors.gold),
-                        if (c.promoted) _miniChip('Promoted', AppColors.gold),
+                        if (c.promoted) _miniChip(c.isEvent ? 'Promoted event' : 'Promoted', AppColors.gold),
                       ],
                     ),
                     const SizedBox(height: 6),

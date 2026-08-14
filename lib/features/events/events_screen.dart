@@ -247,9 +247,9 @@ class _TrendingEventCard extends StatelessWidget {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(LucideIcons.star, size: 11, color: Colors.black87),
+                              Icon(LucideIcons.ticket, size: 11, color: Colors.black87),
                               SizedBox(width: 3),
-                              Text('Promoted', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.black87)),
+                              Text('Promoted Event', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.black87)),
                             ],
                           ),
                         ),
@@ -409,9 +409,9 @@ class _EventPost extends ConsumerWidget {
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(LucideIcons.star, size: 11, color: Colors.black87),
+                                  Icon(LucideIcons.ticket, size: 11, color: Colors.black87),
                                   SizedBox(width: 4),
-                                  Text('Promoted', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black87)),
+                                  Text('Promoted Event', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black87)),
                                 ],
                               ),
                             ),

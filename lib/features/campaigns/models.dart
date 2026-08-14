@@ -286,6 +286,7 @@ class AdminPromotion {
   final int id;
   final int campaignId;
   final String campaignTitle;
+  final bool isEvent;
   final String hostPhone;
   final int amountCents;
   final int days;
@@ -298,6 +299,7 @@ class AdminPromotion {
     required this.id,
     required this.campaignId,
     required this.campaignTitle,
+    required this.isEvent,
     required this.hostPhone,
     required this.amountCents,
     required this.days,
@@ -311,6 +313,7 @@ class AdminPromotion {
     id: j['id'] as int? ?? 0,
     campaignId: j['campaignId'] as int? ?? 0,
     campaignTitle: j['campaignTitle'] as String? ?? '',
+    isEvent: j['isEvent'] == true,
     hostPhone: j['hostPhone'] as String? ?? '',
     amountCents: j['amountCents'] as int? ?? 0,
     days: j['days'] as int? ?? 0,

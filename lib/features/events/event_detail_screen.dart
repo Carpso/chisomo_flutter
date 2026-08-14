@@ -229,9 +229,9 @@ class _EventBody extends ConsumerWidget {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(LucideIcons.star, size: 14, color: AppColors.gold),
+                            Icon(LucideIcons.ticket, size: 14, color: AppColors.gold),
                             SizedBox(width: 4),
-                            Text('Promoted',
+                            Text('Promoted Event',
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.gold)),
                           ],
                         ),

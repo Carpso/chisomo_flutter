@@ -2505,7 +2505,7 @@ class _PromotionsSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 20),
-        _SectionTitle(icon: LucideIcons.star, title: 'Promoted campaigns (top 5)'),
+        _SectionTitle(icon: LucideIcons.star, title: 'Promoted (campaigns & events, top 5)'),
         const SizedBox(height: 8),
         promotions.when(
           loading: () => const Center(child: AppIconSpinner()),
@@ -2561,7 +2561,7 @@ class _PromotionsSection extends ConsumerWidget {
                                   children: [
                                     Text('Host: ${p.hostPhone}'),
                                     Text(
-                                        '${formatKwacha(p.amountCents)} • ${p.days} days • ${p.status}'),
+                                        '${p.isEvent ? 'Promoted event' : 'Promoted campaign'} • ${formatKwacha(p.amountCents)} • ${p.days} days • ${p.status}'),
                                     if (p.expiresAt != null)
                                       Text(
                                           'Expires: ${safeDate(p.expiresAt)}',
