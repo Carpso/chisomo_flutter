@@ -791,9 +791,13 @@ class ApiClient {
     return get('/api/me/achievements', auth: true);
   }
 
-  /// Host/admin: check an attendee in to an event by phone.
-  Future<Map<String, dynamic>> checkInAttendee(int eventId, String phone) {
-    return post('/api/events/$eventId/check-in', {'phone': phone}, auth: true);
+  /// Host/admin: check an attendee in to an event by phone (optionally
+  /// verifying they hold a valid ticket for that event).
+  Future<Map<String, dynamic>> checkInAttendee(int eventId, String phone, {int? ticketId}) {
+    return post('/api/events/$eventId/check-in', {
+      'phone': phone,
+      if (ticketId != null) 'ticketId': ticketId,
+    }, auth: true);
   }
 
   /// Host/admin: attendees checked in to an event.
@@ -1012,8 +1016,13 @@ class ApiClient {
 
   /// Public: active funding opportunities on the Sponsor Desk.
   Future<List<dynamic>> getSponsorDesk() async {
-    final res = await get('/api/sponsor-desk');
+    final res = await get('/api/sponsor-desk', auth: true);
     return res['opportunities'] as List<dynamic>? ?? [];
+  }
+
+  /// Host: mark a Sponsor Desk opportunity as applied.
+  Future<Map<String, dynamic>> applySponsorDesk(int id) {
+    return post('/api/sponsor-desk/$id/apply', {}, auth: true);
   }
 
   /// Admin: full Sponsor Desk list (drafts, published, archived).
@@ -1048,6 +1057,16 @@ class ApiClient {
         ? ''
         : '?q=${Uri.encodeQueryComponent(q.trim())}';
     return get('/api/admin/push-users$query', auth: true);
+  }
+
+  /// Admin: get milestone thresholds (percent).
+  Future<Map<String, dynamic>> getMilestoneConfig() {
+    return get('/api/admin/milestone-config', auth: true);
+  }
+
+  /// Admin: set milestone thresholds (percent list).
+  Future<Map<String, dynamic>> setMilestoneConfig(List<int> thresholds) {
+    return put('/api/admin/milestone-config', {'thresholds': thresholds}, auth: true);
   }
 
   /// Admin: add or update an assistant's permission scopes.
@@ -1151,7 +1170,13 @@ class ApiClient {
     );
   }
 
-  /// Checks the Lipila collection status for a contribution.
+  /// User: their purchased event tickets (each with a scannable check-in code).
+  Future<List<dynamic>> getMyTickets() async {
+    final res = await get('/api/me/tickets', auth: true);
+    return res['tickets'] as List<dynamic>? ?? [];
+  }
+
+  /// Host/admin: check an attendee in by phone (optionally verifying a ticket).
   Future<Map<String, dynamic>> checkContributionStatus(String referenceId) {
     return get('/api/contributions/status/$referenceId');
   }

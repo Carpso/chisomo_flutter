@@ -268,6 +268,9 @@ class _CreateEventScreenState extends ConsumerState<CreateEventScreen> {
         'campaignType': 'event',
         'visibility': _isPrivate ? 'private' : 'public',
         if (_start != null) 'eventDate': _start!.toIso8601String().split('T')[0],
+        if (_start != null)
+          'eventTime':
+              '${_start!.hour.toString().padLeft(2, '0')}:${_start!.minute.toString().padLeft(2, '0')}',
         if (_end != null) 'endsAt': _end!.toIso8601String().split('T')[0],
         if (_venueController.text.trim().isNotEmpty) 'eventVenue': _venueController.text.trim(),
         'eventCapacity': _capacity,

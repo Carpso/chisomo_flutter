@@ -46,9 +46,12 @@ class _QrScanScreenState extends ConsumerState<QrScanScreen> {
         return;
       }
       final phone = parts[1];
+      // Ticket QR codes encode an optional third segment: the contribution id,
+      // so check-in verifies the attendee actually holds a ticket for the event.
+      final ticketId = parts.length >= 3 ? int.tryParse(parts[2]) : null;
       if (_selectedEventId != null) {
         // Event check-in mode.
-        final res = await ref.read(apiClientProvider).checkInAttendee(_selectedEventId!, phone);
+        final res = await ref.read(apiClientProvider).checkInAttendee(_selectedEventId!, phone, ticketId: ticketId);
         setState(() {
           _checkIn = res;
           _lookupError = res['ok'] == true ? null : (res['error'] as String?);

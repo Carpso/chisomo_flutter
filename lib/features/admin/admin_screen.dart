@@ -22,6 +22,7 @@ import '../auth/auth_controller.dart';
 import '../host/host_badge_screen.dart';
 import '../campaigns/campaigns_controller.dart';
 import 'admin_tile_detail_screen.dart';
+import 'milestone_config_card.dart';
 import '../campaigns/models.dart';
 
 class AdminScreen extends ConsumerStatefulWidget {
@@ -348,6 +349,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                               ),
                             ),
                           const SizedBox(height: 12),
+                          if (_can('settings')) ...[
+                            const MilestoneConfigCard(),
+                            const SizedBox(height: 12),
+                          ],
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(14),

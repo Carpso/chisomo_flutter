@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/money.dart';
@@ -284,7 +287,10 @@ class _EventBody extends ConsumerWidget {
                     child: Column(
                       children: [
                         if (c.eventDate != null)
-                          _EventRow(LucideIcons.calendarDays, 'When', c.eventDate!),
+                          _EventRow(LucideIcons.calendarDays, 'When',
+                              c.eventTime != null && c.eventTime!.isNotEmpty
+                                  ? '${c.eventDate} at ${c.eventTime}'
+                                  : c.eventDate!),
                         if (c.eventVenue != null)
                           _EventRow(LucideIcons.mapPin, 'Where', c.eventVenue!),
                         if (c.isTicketedEvent)
@@ -306,6 +312,9 @@ class _EventBody extends ConsumerWidget {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                if (c.eventDate != null)
+                  _EventCountdownCard(campaign: c),
                 const SizedBox(height: 12),
                 if (c.isSoldOut)
                   Container(
@@ -459,6 +468,115 @@ class _EventRow extends StatelessWidget {
                 ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Live countdown to the event + an "Add to calendar" action (Google Calendar
+/// deep link, no extra dependency). Updates every minute while on screen.
+class _EventCountdownCard extends StatefulWidget {
+  final Campaign campaign;
+
+  const _EventCountdownCard({required this.campaign});
+
+  @override
+  State<_EventCountdownCard> createState() => _EventCountdownCardState();
+}
+
+class _EventCountdownCardState extends State<_EventCountdownCard> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  DateTime? get _start {
+    final c = widget.campaign;
+    if (c.eventDate == null) return null;
+    final parts = (c.eventTime ?? '18:00').split(':');
+    // Interpret the stored local CAT time in the device's timezone so the
+    // countdown is approximate but stable.
+    return DateTime(
+      int.parse(c.eventDate!.substring(0, 4)),
+      int.parse(c.eventDate!.substring(5, 7)),
+      int.parse(c.eventDate!.substring(8, 10)),
+      int.tryParse(parts[0]) ?? 18,
+      int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+  }
+
+  String _countdown(DateTime target) {
+    final diff = target.difference(DateTime.now());
+    if (diff.isNegative) return 'This event has started';
+    final d = diff.inDays;
+    final h = diff.inHours % 24;
+    final m = diff.inMinutes % 60;
+    if (d > 0) return '$d days, $h hr, $m min to go';
+    if (h > 0) return '$h hr, $m min to go';
+    return '$m min to go';
+  }
+
+  Future<void> _addToCalendar(DateTime start) async {
+    final end = start.add(const Duration(hours: 2));
+    String fmt(DateTime dt) {
+      String two(int v) => v.toString().padLeft(2, '0');
+      return '${dt.year}${two(dt.month)}${two(dt.day)}T${two(dt.hour)}${two(dt.minute)}00';
+    }
+
+    final venue = widget.campaign.eventVenue ?? '';
+    final uri = Uri.parse(
+      'https://calendar.google.com/calendar/render?action=TEMPLATE'
+      '&text=${Uri.encodeComponent(widget.campaign.title)}'
+      '&dates=${fmt(start)}/${fmt(end)}'
+      '&details=${Uri.encodeComponent(widget.campaign.description)}'
+      '&location=${Uri.encodeComponent(venue)}',
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final start = _start;
+    if (start == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(LucideIcons.hourglass, size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _countdown(start),
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+              onPressed: () => _addToCalendar(start),
+              icon: const Icon(LucideIcons.calendarPlus, size: 16, color: AppColors.primary),
+              label: const Text('Add to my calendar'),
+            ),
+          ],
+        ),
       ),
     );
   }

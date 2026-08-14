@@ -137,6 +137,7 @@ String _channelForType(String? type) {
     case 'new_event':
     case 'ticket_confirmed':
     case 'ticket_sold':
+    case 'event_reminder':
       return _chEvents;
     case 'ticket_created':
     case 'ticket_ack':

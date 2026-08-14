@@ -58,6 +58,9 @@ class _AdminSponsorDeskScreenState extends ConsumerState<AdminSponsorDeskScreen>
       text: existing?['deadline'] != null ? safeDate(existing!['deadline']) : '',
     );
     final descController = TextEditingController(text: existing?['description'] ?? '');
+    final matchController = TextEditingController(
+      text: (existing?['matchCategories'] as List? ?? []).join(', '),
+    );
     String category = (existing?['category'] as String? ?? 'Grant').trim();
     String audience = (existing?['audience'] as String? ?? 'hosts').trim();
     final categories = ['Grant', 'Empowerment', 'Matching funds', 'Loan / financing', 'In-kind', 'Mentorship', 'Scholarship'];
@@ -128,6 +131,15 @@ class _AdminSponsorDeskScreenState extends ConsumerState<AdminSponsorDeskScreen>
                   ),
                 ),
                 const SizedBox(height: 10),
+                TextField(
+                  controller: matchController,
+                  decoration: const InputDecoration(
+                    labelText: 'Best-match categories (comma-separated campaign categories)',
+                    hintText: 'e.g. Medical & Health, Children & Orphans',
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   initialValue: ['hosts', 'events', 'all'].contains(audience) ? audience : 'hosts',
                   items: const [
@@ -162,6 +174,11 @@ class _AdminSponsorDeskScreenState extends ConsumerState<AdminSponsorDeskScreen>
       'link': linkController.text.trim(),
       'description': descController.text.trim(),
       'audience': audience,
+      'matchCategories': matchController.text
+          .split(',')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(),
     };
     if (existing != null) body['id'] = existing['id'];
     try {
@@ -342,7 +359,8 @@ class _AdminSponsorDeskScreenState extends ConsumerState<AdminSponsorDeskScreen>
                                   '${o['organization'] ?? ''} • ${o['category'] ?? 'Grant'}'
                                   '${o['amountLabel'] != null && (o['amountLabel'] as String).isNotEmpty ? ' • ${o['amountLabel']}' : ''}'
                                   '${o['deadline'] != null ? ' • due ${safeDate(o['deadline'])}' : ''}\n'
-                                  '${published ? 'Published' : 'Draft'} • ${archived ? 'Archived' : 'Active'}',
+                                  '${published ? 'Published' : 'Draft'} • ${archived ? 'Archived' : 'Active'}'
+                                  ' • ${o['appliedCount'] ?? 0} applied',
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 11.5),

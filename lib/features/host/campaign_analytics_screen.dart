@@ -157,6 +157,40 @@ class _CampaignAnalyticsScreenState extends ConsumerState<CampaignAnalyticsScree
                             children: [
                               const Row(
                                 children: [
+                                  Icon(LucideIcons.gift, size: 16, color: AppColors.gold),
+                                  SizedBox(width: 8),
+                                  Text('Referral impact',
+                                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  _metric(context, 'Referred gifts', '${_data?['referredGifts'] ?? 0}', LucideIcons.hand),
+                                  const SizedBox(width: 12),
+                                  _metric(context, 'Referred value', formatKwacha(_data?['referredCents'] as int? ?? 0), LucideIcons.banknote),
+                                ],
+                              ),
+                              if ((_data?['gifts'] as int? ?? 0) > 0) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${_data?['referredRate'] ?? 0}% of gifts came from people who signed up via a referral link — reward those referrers!',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
                                   Icon(LucideIcons.trendingUp, size: 16, color: AppColors.primary),
                                   SizedBox(width: 8),
                                   Text('Giving — last 14 days',

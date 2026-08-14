@@ -87,6 +87,7 @@ class Campaign {
   final List<EventTier> eventTiers;
   final int eventCapacity;
   final String? eventDate;
+  final String? eventTime;
   final String? eventVenue;
   final int ticketsSold;
   final int rsvpCount;
@@ -128,6 +129,7 @@ class Campaign {
     this.eventTiers = const [],
     this.eventCapacity = 0,
     this.eventDate,
+    this.eventTime,
     this.eventVenue,
     this.ticketsSold = 0,
     this.rsvpCount = 0,
@@ -172,6 +174,7 @@ class Campaign {
         : const [],
     eventCapacity: (j['eventCapacity'] is num) ? (j['eventCapacity'] as num).toInt() : 0,
     eventDate: j['eventDate'] as String?,
+    eventTime: j['eventTime'] as String?,
     eventVenue: j['eventVenue'] as String?,
     ticketsSold: (j['ticketsSold'] is num) ? (j['ticketsSold'] as num).toInt() : 0,
     rsvpCount: (j['rsvpCount'] is num) ? (j['rsvpCount'] as num).toInt() : 0,

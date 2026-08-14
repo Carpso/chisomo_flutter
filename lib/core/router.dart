@@ -51,6 +51,7 @@ import '../features/admin/transaction_detail_screen.dart';
 import '../features/sponsor_desk/sponsor_desk_screen.dart';
 import '../features/admin/admin_sponsor_desk_screen.dart';
 import '../features/admin/admin_push_users_screen.dart';
+import '../features/events/my_tickets_screen.dart';
 
 /// A `kingdomsponsor://campaign/<id>` deep link waiting to be opened after
 /// the user finishes signing in.
@@ -360,7 +361,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/sponsor-desk',
-            builder: (context, state) => const SponsorDeskScreen(),
+            builder: (context, state) {
+              final auth = ref.read(authControllerProvider).value;
+              final isHost = auth?.hostStatus == 'approved';
+              final isStaff = auth?.isStaff ?? false;
+              if (!isHost && !isStaff) return const CampaignListScreen();
+              return const SponsorDeskScreen();
+            },
+          ),
+          GoRoute(
+            path: '/my-tickets',
+            builder: (context, state) => const MyTicketsScreen(),
           ),
           GoRoute(
             path: '/admin',

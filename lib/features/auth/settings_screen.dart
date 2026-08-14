@@ -789,6 +789,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const Divider(height: 1, indent: 56),
                 ListTile(
+                  leading: const Icon(LucideIcons.ticket, color: AppColors.gold),
+                  title: const Text('My event tickets'),
+                  subtitle: const Text('Show your scannable ticket QR at the door'),
+                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  onTap: () => context.push('/my-tickets'),
+                ),
+                const Divider(height: 1, indent: 56),
+                ListTile(
                   leading:
                       const Icon(LucideIcons.headphones, color: AppColors.primary),
                   title: const Text('Help & support'),

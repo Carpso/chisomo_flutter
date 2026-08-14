@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api_client.dart';
 import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/app_icon_spinner.dart';
@@ -126,15 +127,50 @@ class _HeaderBanner extends StatelessWidget {
   }
 }
 
-class _OpportunityCard extends ConsumerWidget {
+class _OpportunityCard extends ConsumerStatefulWidget {
   final SponsorOpportunity opportunity;
 
   const _OpportunityCard({required this.opportunity});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_OpportunityCard> createState() => _OpportunityCardState();
+}
+
+class _OpportunityCardState extends ConsumerState<_OpportunityCard> {
+  bool _applying = false;
+  bool _applied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _applied = widget.opportunity.appliedCount > 0;
+  }
+
+  Future<void> _apply() async {
+    setState(() => _applying = true);
+    try {
+      await ref.read(apiClientProvider).applySponsorDesk(widget.opportunity.id);
+      if (mounted) {
+        setState(() => _applied = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Application recorded — our team will follow up.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not record your application.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final o = opportunity;
+    final o = widget.opportunity;
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -165,6 +201,26 @@ class _OpportunityCard extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  if (o.matched) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.sparkles, size: 11, color: AppColors.gold),
+                          SizedBox(width: 3),
+                          Text('Best match',
+                              style: TextStyle(
+                                  fontSize: 10.5, fontWeight: FontWeight.w800, color: AppColors.gold)),
+                        ],
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   if (o.amountLabel.isNotEmpty)
                     Text(
@@ -211,7 +267,8 @@ class _OpportunityCard extends ConsumerWidget {
               const SizedBox(height: 10),
               Wrap(
                 spacing: 12,
-                runSpacing: 6,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (o.hasDeadline)
                     Row(
@@ -238,6 +295,28 @@ class _OpportunityCard extends ConsumerWidget {
                       ],
                     ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _applied
+                        ? OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                            onPressed: null,
+                            icon: const Icon(LucideIcons.checkCircle, size: 16, color: AppColors.primary),
+                            label: const Text('Applied'),
+                          )
+                        : FilledButton.icon(
+                            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 10)),
+                            onPressed: _applying ? null : _apply,
+                            icon: _applying
+                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(LucideIcons.send, size: 15),
+                            label: Text(_applying ? 'Recording…' : 'I applied'),
+                          ),
+                ),
+              ],
               ),
             ],
           ),

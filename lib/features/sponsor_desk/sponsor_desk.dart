@@ -13,6 +13,8 @@ class SponsorOpportunity {
   final String? deadline;
   final String link;
   final String audience;
+  final bool matched;
+  final int appliedCount;
   final String? publishedAt;
 
   const SponsorOpportunity({
@@ -25,6 +27,8 @@ class SponsorOpportunity {
     this.deadline,
     required this.link,
     required this.audience,
+    this.matched = false,
+    this.appliedCount = 0,
     this.publishedAt,
   });
 
@@ -38,6 +42,8 @@ class SponsorOpportunity {
         deadline: j['deadline'] as String?,
         link: j['link'] as String? ?? '',
         audience: j['audience'] as String? ?? 'hosts',
+        matched: j['matched'] == true,
+        appliedCount: (j['appliedCount'] as num?)?.toInt() ?? 0,
         publishedAt: j['publishedAt'] as String?,
       );
 
