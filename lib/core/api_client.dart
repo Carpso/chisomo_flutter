@@ -1202,6 +1202,11 @@ class ApiClient {
     return post('/api/campaigns/$campaignId/chat', {'body': body}, auth: true);
   }
 
+  /// Campaign/event chat: delete a message (own, or any if host/staff).
+  Future<Map<String, dynamic>> deleteCampaignChat(int campaignId, int messageId) {
+    return delete('/api/campaigns/$campaignId/chat/$messageId', auth: true);
+  }
+
   /// Runs a request with a timeout and surfaces network failures as [ApiException]
   /// so the UI can show a clear message instead of hanging or silently failing.
   /// Also picks up sliding-session refresh tokens issued by the server.
