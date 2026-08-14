@@ -12,7 +12,7 @@
   leftovers ship in a store build.
 - Current version name comes from `pubspec.yaml` (`version:`), current
   versionCode is in `android/app/build.gradle.kts`.
-- **Current version: 0.7.0 (versionCode 75)** — last built 2026-08-13.
+- **Current version: 0.7.0 (versionCode 76)** — last built 2026-08-14.
 - A "store build" (something to upload) requires a version code bump even if
   only assets/code changed.
 - Release build commands:
