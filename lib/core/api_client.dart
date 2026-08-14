@@ -1042,6 +1042,14 @@ class ApiClient {
     return delete('/api/admin/sponsor-desk/$id', auth: true);
   }
 
+  /// Admin: per-user push reachability (who has a registered device token).
+  Future<Map<String, dynamic>> getPushUsers({String q = ''}) {
+    final query = q.trim().isEmpty
+        ? ''
+        : '?q=${Uri.encodeQueryComponent(q.trim())}';
+    return get('/api/admin/push-users$query', auth: true);
+  }
+
   /// Admin: add or update an assistant's permission scopes.
   Future<Map<String, dynamic>> saveAssistant(
     int userId, {

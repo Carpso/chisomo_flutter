@@ -319,6 +319,35 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                               ),
                             ),
                           const SizedBox(height: 12),
+                          if (_can('settings'))
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.smartphone, color: AppColors.primary, size: 20),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Push reachability',
+                                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                          Text('Who can receive notifications on their phone',
+                                              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                    FilledButton.icon(
+                                      onPressed: () => context.push('/admin/push-users'),
+                                      icon: const Icon(LucideIcons.bellRing, size: 15),
+                                      label: const Text('Check'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 12),
                           Card(
                             child: Padding(
                               padding: const EdgeInsets.all(14),

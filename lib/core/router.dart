@@ -50,6 +50,7 @@ import '../features/admin/admin_users_screen.dart';
 import '../features/admin/transaction_detail_screen.dart';
 import '../features/sponsor_desk/sponsor_desk_screen.dart';
 import '../features/admin/admin_sponsor_desk_screen.dart';
+import '../features/admin/admin_push_users_screen.dart';
 
 /// A `kingdomsponsor://campaign/<id>` deep link waiting to be opened after
 /// the user finishes signing in.
@@ -452,6 +453,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               final canSettings = authAsync.value?.canScope('settings') ?? false;
               if (!canSettings) return const CampaignListScreen();
               return const AdminSponsorDeskScreen();
+            },
+          ),
+          GoRoute(
+            path: '/admin/push-users',
+            builder: (context, state) {
+              final authAsync = ref.watch(authControllerProvider);
+              if (authAsync.isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              final canSettings = authAsync.value?.canScope('settings') ?? false;
+              if (!canSettings) return const CampaignListScreen();
+              return const AdminPushUsersScreen();
             },
           ),
           GoRoute(
